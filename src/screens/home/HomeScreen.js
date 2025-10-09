@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ const menuItems = [
   {
     label: "Messages",
     icon: "chatbubble-ellipses-outline",
-    screen: "Contacts",
+    screen: "Messages",
     iconColor: "#F98715",
   },
   {
@@ -92,10 +92,16 @@ const menuItems = [
 ];
 
 export default function HomeScreen({ navigation }) {
+  const [searchText, setSearchText] = useState("");
+
+  const filteredItems = menuItems.filter((item) =>
+    item.label.toLowerCase().includes(searchText.toLowerCase())
+  );
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Ionicons name="menu" size={32} />
+        <Ionicons name="menu" size={32} color="#333" />
         <Text style={styles.title}>Menu</Text>
         <TouchableOpacity
           key={"profile"}
@@ -118,86 +124,110 @@ export default function HomeScreen({ navigation }) {
         <TextInput
           placeholder="Rechercher un menu..."
           style={styles.searchInput}
+          value={searchText}
+          onChangeText={setSearchText}
         />
-      </View>
-
-      {/* <TextInput placeholder="Rechercher un menu..." style={styles.search} /> */}
-
-      <View style={styles.grid}>
-        {menuItems.map((item, index) => (
-          <TouchableOpacity
-            key={index}
-            style={styles.iconBox}
-            onPress={() => navigation.navigate(item.screen)}
-          >
-            <Ionicons name={item.icon} size={30} color={item.iconColor} />
-            <Text style={styles.iconLabel}>{item.label}</Text>
+        {searchText.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchText("")}>
+            <Ionicons name="close-circle" size={20} color="#999" />
           </TouchableOpacity>
-        ))}
+        )}
       </View>
+
+      {filteredItems.length === 0 ? (
+        <View style={styles.noResults}>
+          <Ionicons name="search-outline" size={60} color="#ccc" />
+          <Text style={styles.noResultsText}>Aucun résultat trouvé</Text>
+        </View>
+      ) : (
+        <View style={styles.grid}>
+          {filteredItems.map((item, index) => (
+            <TouchableOpacity
+              key={index}
+              style={styles.iconBox}
+              onPress={() => navigation.navigate(item.screen)}
+            >
+              <View
+                style={[
+                  styles.iconCircle,
+                  { backgroundColor: `${item.iconColor}20` },
+                ]}
+              >
+                <Ionicons name={item.icon} size={30} color={item.iconColor} />
+              </View>
+              <Text style={styles.iconLabel}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20, backgroundColor: "#F3F3F3", paddingTop: 60 },
+  container: { flex: 1, backgroundColor: "#F8F9FA", padding: 16 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 15,
-  },
-  title: { fontSize: 26, fontWeight: "bold" },
-  avatar: { width: 40, height: 40, borderRadius: 20 },
-  search: {
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    padding: 10,
     marginBottom: 20,
-    borderWidth: 1,
-    borderColor: "#ddd",
+    paddingTop: 40,
   },
+  title: { fontSize: 24, fontWeight: "bold", color: "#333" },
+  avatar: { width: 45, height: 45, borderRadius: 22.5 },
+
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    marginBottom: 20,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  searchIcon: { marginRight: 8 },
+  searchInput: { flex: 1, paddingVertical: 12, fontSize: 15 },
+
+  noResults: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  noResultsText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#999",
+  },
+
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
+    paddingBottom: 30,
   },
   iconBox: {
     width: "30%",
-    aspectRatio: 1,
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 10,
-    marginBottom: 20,
     alignItems: "center",
+    marginBottom: 25,
+    padding: 10,
+  },
+  iconCircle: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
     justifyContent: "center",
-    elevation: 3,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
+    alignItems: "center",
+    marginBottom: 10,
   },
   iconLabel: {
-    marginTop: 5,
-    fontSize: 12,
+    fontSize: 13,
     textAlign: "center",
-  },
-  searchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f5f5f5",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    marginHorizontal: 10,
-    marginVertical: 20,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    height: 40,
-    fontSize: 16,
     color: "#333",
-    backgroundColor: "#f9f9f9",
+    fontWeight: "500",
   },
 });

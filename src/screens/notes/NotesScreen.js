@@ -3,52 +3,80 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   FlatList,
   TouchableOpacity,
-  Image,
+  TextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-const mockContacts = [
+const mockNotes = [
   {
     id: "1",
-    name: "Jean Dupont",
-    email: "jean.dupont@gmail.com",
-    image: "https://i.pravatar.cc/150?img=1",
+    titre: "Réunion équipe",
+    contenu: "Points à aborder : Budget Q4, nouveaux projets, planning...",
+    date: "09/10/2025",
+    heure: "14:30",
+    couleur: "#FFE5B4",
   },
   {
     id: "2",
-    name: "Marie Durant",
-    email: "marie.durant@gmail.com",
-    image: "https://i.pravatar.cc/150?img=2",
+    titre: "Idées produit",
+    contenu:
+      "Nouvelle fonctionnalité pour le module CRM, intégration WhatsApp...",
+    date: "08/10/2025",
+    heure: "10:15",
+    couleur: "#D4F1F4",
   },
   {
     id: "3",
-    name: "Paul Kouassi",
-    email: "paul.kouassi@gmail.com",
-    image: "https://i.pravatar.cc/150?img=3",
+    titre: "Liste courses",
+    contenu: "Papier A4, stylos, marqueurs, post-it, agrafeuse...",
+    date: "07/10/2025",
+    heure: "16:45",
+    couleur: "#E5D4F1",
+  },
+  {
+    id: "4",
+    titre: "Formation",
+    contenu: "React Native avancé - Inscription avant le 15/10",
+    date: "06/10/2025",
+    heure: "09:00",
+    couleur: "#FFD4E5",
   },
 ];
 
-export default function ContactsScreen({ navigation }) {
-  const [isGrid, setIsGrid] = useState(true);
+export default function NotesScreen({ navigation }) {
   const [searchActive, setSearchActive] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const [viewMode, setViewMode] = useState("grid"); // "grid" ou "list"
 
-  const filteredContacts = mockContacts.filter((c) =>
-    c.name.toLowerCase().includes(searchText.toLowerCase())
+  const filteredNotes = mockNotes.filter(
+    (n) =>
+      n.titre.toLowerCase().includes(searchText.toLowerCase()) ||
+      n.contenu.toLowerCase().includes(searchText.toLowerCase())
   );
 
   const renderItem = ({ item }) => (
     <TouchableOpacity
-      style={isGrid ? styles.card : styles.rowItem}
-      onPress={() => navigation.navigate("ContactDetail", { contact: item })}
+      style={[
+        viewMode === "grid" ? styles.cardGrid : styles.cardList,
+        { backgroundColor: item.couleur },
+      ]}
     >
-      <Image source={{ uri: item.image }} style={styles.avatar} />
-      <View style={isGrid ? styles.contactInfoGrid : styles.contactInfoRow}>
-        <Text style={styles.name}>{item.name}</Text>
-        <Text style={styles.email}>{item.email}</Text>
+      <View style={styles.cardHeader}>
+        <Text style={styles.titre} numberOfLines={1}>
+          {item.titre}
+        </Text>
+        <TouchableOpacity>
+          <Ionicons name="ellipsis-vertical" size={18} color="#333" />
+        </TouchableOpacity>
+      </View>
+      <Text style={styles.contenu} numberOfLines={viewMode === "grid" ? 3 : 2}>
+        {item.contenu}
+      </Text>
+      <View style={styles.cardFooter}>
+        <Text style={styles.dateTime}>{item.date}</Text>
+        <Text style={styles.dateTime}>{item.heure}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -58,15 +86,15 @@ export default function ContactsScreen({ navigation }) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="grid-outline" size={24} />
+          <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Contacts</Text>
+        <Text style={styles.headerTitle}>Notes</Text>
         <TouchableOpacity>
-          <Ionicons name="funnel-outline" size={24} />
+          <Ionicons name="funnel-outline" size={24} color="#333" />
         </TouchableOpacity>
       </View>
 
-      {/* Ligne de recherche + boutons de vue */}
+      {/* Barre de recherche et vue */}
       <View style={styles.searchRow}>
         <TouchableOpacity
           onPress={() => setSearchActive(!searchActive)}
@@ -77,54 +105,56 @@ export default function ContactsScreen({ navigation }) {
 
         <View style={styles.toggleView}>
           <TouchableOpacity
-            onPress={() => setIsGrid(true)}
-            style={[styles.toggleButton, isGrid && styles.activeToggle]}
+            onPress={() => setViewMode("grid")}
+            style={[
+              styles.toggleButton,
+              viewMode === "grid" && styles.activeToggle,
+            ]}
           >
             <Ionicons
               name="grid"
               size={20}
-              color={isGrid ? "#990000" : "#333"}
+              color={viewMode === "grid" ? "#990000" : "#333"}
             />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => setIsGrid(false)}
-            style={[styles.toggleButton, !isGrid && styles.activeToggle]}
+            onPress={() => setViewMode("list")}
+            style={[
+              styles.toggleButton,
+              viewMode === "list" && styles.activeToggle,
+            ]}
           >
             <Ionicons
               name="list-outline"
               size={20}
-              color={!isGrid ? "#990000" : "#333"}
+              color={viewMode === "list" ? "#990000" : "#333"}
             />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Champ recherche */}
       {searchActive && (
         <TextInput
           style={styles.searchInput}
-          placeholder="Rechercher un contact..."
+          placeholder="Rechercher une note..."
           value={searchText}
           onChangeText={setSearchText}
         />
       )}
 
       {/* Bouton ajouter */}
-      <TouchableOpacity
-        style={styles.addButton}
-        onPress={() => navigation.navigate("AddContact")}
-      >
+      <TouchableOpacity style={styles.addButton}>
         <Ionicons name="add-circle-outline" size={20} color="#fff" />
-        <Text style={styles.addButtonText}>Créer un contact</Text>
+        <Text style={styles.addButtonText}>Nouvelle note</Text>
       </TouchableOpacity>
 
-      {/* Liste ou grille */}
+      {/* Liste des notes */}
       <FlatList
-        data={filteredContacts}
-        key={isGrid ? "g" : "l"}
+        data={filteredNotes}
+        key={viewMode}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        numColumns={isGrid ? 2 : 1}
+        numColumns={viewMode === "grid" ? 2 : 1}
         contentContainerStyle={styles.list}
       />
     </View>
@@ -148,7 +178,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  // Ligne search + toggle
+  // Recherche et vue
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -174,8 +204,6 @@ const styles = StyleSheet.create({
   activeToggle: {
     backgroundColor: "#F3F3F3",
   },
-
-  // Champ de recherche (visible si activé)
   searchInput: {
     backgroundColor: "#fff",
     borderRadius: 10,
@@ -185,10 +213,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
 
-  // Bouton d'ajout
+  // Bouton ajouter
   addButton: {
     flexDirection: "row",
-    // alignItems: "center",
     alignSelf: "flex-start",
     backgroundColor: "#990000",
     borderRadius: 10,
@@ -207,44 +234,45 @@ const styles = StyleSheet.create({
 
   // Liste
   list: { paddingBottom: 30 },
-  card: {
+  cardGrid: {
     flex: 1,
-    backgroundColor: "#fff",
-    margin: 5,
     borderRadius: 10,
-    padding: 15,
-    alignItems: "center",
+    padding: 12,
+    margin: 5,
+    elevation: 2,
+    minHeight: 150,
+  },
+  cardList: {
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
     elevation: 2,
   },
-  rowItem: {
-    backgroundColor: "#fff",
+  cardHeader: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    padding: 15,
-    marginVertical: 5,
-    borderRadius: 10,
+    marginBottom: 8,
   },
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginBottom: 5,
-    marginRight: 10,
-  },
-  name: {
-    fontSize: 18,
-    textAlign: "center",
-  },
-  contactInfoGrid: {
+  titre: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#333",
     flex: 1,
+  },
+  contenu: {
+    fontSize: 14,
+    color: "#555",
+    marginBottom: 10,
+    lineHeight: 20,
+  },
+  cardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
   },
-  contactInfoRow: {
-    flex: 1,
-    alignItems: "flex-start",
-  },
-  email: {
-    fontSize: 12,
+  dateTime: {
+    fontSize: 11,
     color: "#666",
   },
 });
