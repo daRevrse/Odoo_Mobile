@@ -6,334 +6,190 @@ import {
   StyleSheet,
   Image,
   TouchableOpacity,
-  StatusBar,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { authService } from "../../services";
 
 export default function LoginScreen({ navigation }) {
-  const [email, setEmail] = useState("");
+  const [db, setDb] = useState("");
+  const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
-    // Logique de connexion
-    navigation.navigate("Home");
+  const handleLogin = async () => {
+    // Validation des champs
+    if (!db.trim() || !login.trim() || !password.trim()) {
+      Alert.alert("Erreur", "Veuillez remplir tous les champs");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const result = await authService.login(db, login, password);
+
+      if (result.success) {
+        // Connexion réussie
+        Alert.alert("Succès", "Connexion réussie", [
+          {
+            text: "OK",
+            onPress: () => navigation.replace("Home"),
+          },
+        ]);
+      } else {
+        // Erreur de connexion
+        Alert.alert("Erreur", result.error || "Échec de la connexion");
+      }
+    } catch (error) {
+      Alert.alert("Erreur", "Une erreur s'est produite lors de la connexion");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Logo */}
-        <View style={styles.logoContainer}>
-          <Image
-            source={require("./../../../src/assets/logo.png")}
-            style={styles.logo}
+    <View style={styles.container}>
+      <Image
+        source={require("./../../../src/assets/logo.png")}
+        style={styles.logo}
+      />
+
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Base de données</Text>
+        <View style={styles.inputContainer}>
+          <TextInput
+            placeholder="Nom de la base de données"
+            style={styles.input}
+            value={db}
+            onChangeText={setDb}
+            autoCapitalize="none"
+            editable={!loading}
           />
-          <Text style={styles.welcomeText}>Bienvenue</Text>
-          <Text style={styles.subtitleText}>Connectez-vous pour continuer</Text>
+          <Ionicons
+            name="server-outline"
+            size={20}
+            color="#555"
+            style={styles.icon}
+          />
         </View>
+      </View>
 
-        {/* Formulaire */}
-        <View style={styles.formContainer}>
-          {/* Email */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Adresse email</Text>
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="mail-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                placeholder="exemple@email.com"
-                style={styles.input}
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-          </View>
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Login</Text>
+        <View style={styles.inputContainer}>
+          <TextInput
+            placeholder="Identifiant"
+            style={styles.input}
+            value={login}
+            onChangeText={setLogin}
+            autoCapitalize="none"
+            editable={!loading}
+          />
+          <Ionicons
+            name="person-outline"
+            size={20}
+            color="#555"
+            style={styles.icon}
+          />
+        </View>
+      </View>
 
-          {/* Mot de passe */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Mot de passe</Text>
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="lock-closed-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                placeholder="Entrez votre mot de passe"
-                style={styles.input}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-              />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                <Ionicons
-                  name={showPassword ? "eye-outline" : "eye-off-outline"}
-                  size={20}
-                  color="#999"
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Se souvenir de moi & Mot de passe oublié */}
-          <View style={styles.optionsRow}>
-            <TouchableOpacity
-              style={styles.rememberContainer}
-              onPress={() => setRememberMe(!rememberMe)}
-            >
-              <View
-                style={[styles.checkbox, rememberMe && styles.checkboxChecked]}
-              >
-                {rememberMe && (
-                  <Ionicons name="checkmark" size={14} color="#fff" />
-                )}
-              </View>
-              <Text style={styles.rememberText}>Se souvenir de moi</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => navigation.navigate("ForgotPassword")}
-            >
-              <Text style={styles.forgotText}>Mot de passe oublié ?</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Bouton de connexion */}
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Mot de passe</Text>
+        <View style={styles.inputContainer}>
+          <TextInput
+            placeholder="Mot de passe"
+            style={styles.input}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPassword}
+            editable={!loading}
+          />
           <TouchableOpacity
-            style={[
-              styles.loginButton,
-              (!email || !password) && styles.loginButtonDisabled,
-            ]}
-            onPress={handleLogin}
-            disabled={!email || !password}
+            onPress={() => setShowPassword(!showPassword)}
+            disabled={loading}
           >
-            <Text style={styles.loginButtonText}>Se connecter</Text>
-            <Ionicons name="arrow-forward" size={20} color="#fff" />
-          </TouchableOpacity>
-
-          {/* Séparateur */}
-          {/* <View style={styles.separator}>
-            <View style={styles.separatorLine} />
-            <Text style={styles.separatorText}>OU</Text>
-            <View style={styles.separatorLine} />
-          </View> */}
-
-          {/* Connexion alternatives */}
-          {/* <TouchableOpacity style={styles.socialButton}>
-            <Ionicons name="logo-google" size={20} color="#DB4437" />
-            <Text style={styles.socialButtonText}>Continuer avec Google</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.socialButton}>
-            <Ionicons name="logo-microsoft" size={20} color="#00A4EF" />
-            <Text style={styles.socialButtonText}>
-              Continuer avec Microsoft
-            </Text>
-          </TouchableOpacity> */}
-        </View>
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Vous n'avez pas de compte ?</Text>
-          <TouchableOpacity onPress={() => navigation.navigate("Register")}>
-            <Text style={styles.footerLink}> S'inscrire</Text>
+            <Ionicons
+              name={showPassword ? "eye-outline" : "eye-off-outline"}
+              size={20}
+              color="#555"
+              style={styles.icon}
+            />
           </TouchableOpacity>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </View>
+
+      <Text style={styles.forgot}>Mot de passe oublié?</Text>
+
+      <TouchableOpacity
+        style={[styles.button, loading && styles.buttonDisabled]}
+        onPress={handleLogin}
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.buttonText}>Connexion</Text>
+        )}
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
-  },
-  scrollContent: {
-    flexGrow: 1,
     padding: 20,
     justifyContent: "center",
-  },
-  logoContainer: {
-    alignItems: "center",
-    marginBottom: 20,
+    backgroundColor: "#fff",
   },
   logo: {
-    width: 220,
+    width: 380,
     height: 120,
     resizeMode: "contain",
-    marginBottom: 10,
-  },
-  welcomeText: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: 5,
-  },
-  subtitleText: {
-    fontSize: 15,
-    color: "#666",
+    alignSelf: "center",
+    marginBottom: 40,
+    marginInline: 20,
   },
 
-  formContainer: {
-    width: "100%",
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: 8,
-  },
+  inputGroup: { marginBottom: 20 },
+  label: { marginBottom: 5, fontSize: 20 },
+
   inputContainer: {
+    backgroundColor: "#eee",
+    borderRadius: 10,
+    paddingHorizontal: 10,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F8F9FA",
-    borderRadius: 12,
-    paddingHorizontal: 15,
-    borderWidth: 1,
-    borderColor: "#E8E8E8",
-  },
-  inputIcon: {
-    marginRight: 10,
+    height: 55,
   },
   input: {
     flex: 1,
-    fontSize: 15,
-    paddingVertical: 15,
-    color: "#333",
+    fontSize: 26,
+    paddingVertical: 10,
   },
-
-  optionsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 25,
-  },
-  rememberContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: "#D0D0D0",
-    marginRight: 8,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  checkboxChecked: {
-    backgroundColor: "#990000",
-    borderColor: "#990000",
-  },
-  rememberText: {
-    fontSize: 14,
-    color: "#666",
-  },
-  forgotText: {
-    fontSize: 14,
-    color: "#990000",
-    fontWeight: "600",
-  },
-
-  loginButton: {
-    backgroundColor: "#990000",
-    paddingVertical: 16,
-    borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    elevation: 2,
-    shadowColor: "#990000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-  },
-  loginButtonDisabled: {
-    backgroundColor: "#D0D0D0",
-    elevation: 0,
-    shadowOpacity: 0,
-  },
-  loginButtonText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 16,
-    marginRight: 8,
-  },
-
-  separator: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 25,
-  },
-  separatorLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "#E8E8E8",
-  },
-  separatorText: {
-    marginHorizontal: 15,
-    fontSize: 14,
-    color: "#999",
-    fontWeight: "500",
-  },
-
-  socialButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F8F9FA",
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#E8E8E8",
-  },
-  socialButtonText: {
-    fontSize: 15,
-    color: "#333",
-    fontWeight: "500",
+  icon: {
     marginLeft: 10,
+    fontSize: 26,
   },
 
-  footer: {
-    flexDirection: "row",
-    justifyContent: "center",
+  forgot: {
+    textAlign: "right",
+    color: "#999",
+    fontSize: 18,
+    marginBottom: 30,
+  },
+  button: {
+    backgroundColor: "#990000",
+    paddingVertical: 15,
+    borderRadius: 8,
     alignItems: "center",
-    marginTop: 30,
   },
-  footerText: {
-    fontSize: 14,
-    color: "#666",
+  buttonDisabled: {
+    backgroundColor: "#cc6666",
   },
-  footerLink: {
-    fontSize: 14,
-    color: "#990000",
-    fontWeight: "600",
-  },
+  buttonText: { color: "#fff", fontWeight: "bold", fontSize: 26 },
 });
