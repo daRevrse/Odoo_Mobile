@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,14 +10,46 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { authService } from "../../services";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { authService, initializeSession } from "../../services";
 
-export default function LoginScreen({ navigation }) {
+const STORAGE_KEY = "SELECTED_DATABASE";
+
+export default function LoginScreen({ navigation, route }) {
   const [db, setDb] = useState("");
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    // Récupérer la base de données depuis les paramètres de navigation
+    if (route.params?.database) {
+      setDb(route.params.database);
+    }
+
+    // Initialiser la session Odoo dès le chargement de l'écran
+    initializeSessionOnLoad();
+  }, [route.params]);
+
+  const initializeSessionOnLoad = async () => {
+    try {
+      await initializeSession();
+    } catch (error) {
+      console.error("Erreur lors de l'initialisation de la session:", error);
+    }
+  };
+
+  const handleChangeDatabase = async () => {
+    try {
+      // Supprimer la base de données stockée
+      await AsyncStorage.removeItem(STORAGE_KEY);
+      // Retourner à l'écran de sélection
+      navigation.replace("DatabaseSelection");
+    } catch (error) {
+      Alert.alert("Erreur", "Impossible de changer de base de données");
+    }
+  };
 
   const handleLogin = async () => {
     // Validation des champs
@@ -29,6 +61,9 @@ export default function LoginScreen({ navigation }) {
     setLoading(true);
 
     try {
+      // S'assurer que la session est initialisée avant le login
+      await initializeSession();
+
       const result = await authService.login(db, login, password);
 
       if (result.success) {
@@ -57,24 +92,15 @@ export default function LoginScreen({ navigation }) {
         style={styles.logo}
       />
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Base de données</Text>
-        <View style={styles.inputContainer}>
-          <TextInput
-            placeholder="Nom de la base de données"
-            style={styles.input}
-            value={db}
-            onChangeText={setDb}
-            autoCapitalize="none"
-            editable={!loading}
-          />
-          <Ionicons
-            name="server-outline"
-            size={20}
-            color="#555"
-            style={styles.icon}
-          />
+      {/* Affichage de la base de données sélectionnée */}
+      <View style={styles.databaseInfo}>
+        <View style={styles.databaseLabel}>
+          <Ionicons name="server-outline" size={20} color="#990000" />
+          <Text style={styles.databaseText}>{db}</Text>
         </View>
+        <TouchableOpacity onPress={handleChangeDatabase}>
+          <Text style={styles.changeText}>Changer</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.inputGroup}>
@@ -147,49 +173,89 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   logo: {
-    width: 380,
-    height: 120,
+    width: 280,
+    height: 90,
     resizeMode: "contain",
     alignSelf: "center",
-    marginBottom: 40,
-    marginInline: 20,
+    marginBottom: 30,
   },
-
-  inputGroup: { marginBottom: 20 },
-  label: { marginBottom: 5, fontSize: 20 },
-
-  inputContainer: {
-    backgroundColor: "#eee",
+  databaseInfo: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#f8f9fa",
+    padding: 12,
     borderRadius: 10,
-    paddingHorizontal: 10,
+    marginBottom: 24,
+  },
+  databaseLabel: {
     flexDirection: "row",
     alignItems: "center",
-    height: 55,
+    gap: 8,
+  },
+  databaseText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#333",
+  },
+  changeText: {
+    fontSize: 14,
+    color: "#990000",
+    fontWeight: "600",
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  label: {
+    marginBottom: 6,
+    fontSize: 14,
+    color: "#333",
+    fontWeight: "500",
+  },
+  inputContainer: {
+    backgroundColor: "#f5f5f5",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    height: 48,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
   },
   input: {
     flex: 1,
-    fontSize: 26,
-    paddingVertical: 10,
+    fontSize: 15,
+    paddingVertical: 8,
+    color: "#333",
   },
   icon: {
-    marginLeft: 10,
-    fontSize: 26,
+    marginLeft: 8,
   },
-
   forgot: {
     textAlign: "right",
     color: "#999",
-    fontSize: 18,
-    marginBottom: 30,
+    fontSize: 13,
+    marginBottom: 24,
+    marginTop: 4,
   },
   button: {
     backgroundColor: "#990000",
-    paddingVertical: 15,
-    borderRadius: 8,
+    paddingVertical: 13,
+    borderRadius: 10,
     alignItems: "center",
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   buttonDisabled: {
     backgroundColor: "#cc6666",
+    opacity: 0.7,
   },
-  buttonText: { color: "#fff", fontWeight: "bold", fontSize: 26 },
+  buttonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 16,
+  },
 });

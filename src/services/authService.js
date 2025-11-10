@@ -1,5 +1,10 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import api, { setAuthToken, logout as apiLogout, STORAGE_KEYS } from './api';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import api, {
+  setAuthToken,
+  logout as apiLogout,
+  STORAGE_KEYS,
+  ODOO_BASE_URL,
+} from "./api";
 
 /**
  * Service d'authentification pour l'application Odoo Mobile
@@ -16,89 +21,166 @@ class AuthService {
     try {
       // Validation des param�tres
       if (!db || !login || !password) {
-        throw new Error('Tous les champs sont obligatoires (db, login, password)');
+        throw new Error(
+          "Tous les champs sont obligatoires (db, login, password)"
+        );
       }
 
-      // Appel API de connexion
-      const response = await api.post('/login', {
-        db,
-        login,
-        password,
-      });
+      // Appel API de connexion sur /web/session/authenticate
+      // Utilisation de l'instance api pour b�n�ficier des intercepteurs
+      const response = await api.post(
+        "/web/session/authenticate",
+        {
+          jsonrpc: "2.0",
+          params: {
+            db,
+            login,
+            password,
+          },
+        },
+        {
+          baseURL: ODOO_BASE_URL,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
       const { data } = response;
 
       // V�rifier que la r�ponse contient les donn�es n�cessaires
-      if (!data || !data.token) {
-        throw new Error('R�ponse invalide du serveur');
+      if (!data || !data.result) {
+        throw new Error("R�ponse invalide du serveur");
+      }
+
+      const result = data.result;
+
+      // V�rifier que l'authentification a r�ussi
+      if (!result.uid) {
+        throw new Error("Authentification �chou�e");
       }
 
       // Extraire les donn�es de la r�ponse
-      const {
-        token,
-        refresh_token,
-        user,
-        uid,
-        company_id,
-        partner_id,
-        session_id,
-      } = data;
-
-      // Sauvegarder le token d'authentification
-      await setAuthToken(token, refresh_token);
+      const { uid, username, name, company_id, partner_id, session_id } =
+        result;
 
       // Sauvegarder les informations utilisateur
       const userData = {
         uid,
-        login,
+        login: username || login,
+        name: name || username || login,
         db,
-        user: user || login,
         company_id,
         partner_id,
         session_id,
         loginTime: new Date().toISOString(),
       };
 
-      await AsyncStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userData));
+      await AsyncStorage.setItem(
+        STORAGE_KEYS.USER_DATA,
+        JSON.stringify(userData)
+      );
       await AsyncStorage.setItem(STORAGE_KEYS.DATABASE, db);
 
-      console.log('Connexion r�ussie pour:', login);
+      console.log("Connexion r�ussie pour:", login);
 
       return {
         success: true,
         user: userData,
-        token,
       };
     } catch (error) {
-      console.error('Erreur lors de la connexion:', error);
+      console.error("Erreur lors de la connexion:", error);
 
       // Gestion des erreurs sp�cifiques
-      let errorMessage = 'Erreur de connexion';
+      let errorMessage = "Erreur de connexion";
 
       if (error.response) {
-        switch (error.response.status) {
-          case 401:
-            errorMessage = 'Identifiants incorrects';
-            break;
-          case 404:
-            errorMessage = 'Base de donn�es introuvable';
-            break;
-          case 500:
-            errorMessage = 'Erreur serveur. Veuillez r�essayer plus tard.';
-            break;
-          default:
-            errorMessage = error.response.data?.message || error.userMessage || 'Erreur de connexion';
+        // V�rifier si c'est une erreur Odoo jsonrpc
+        if (error.response.data?.error) {
+          const odooError = error.response.data.error;
+          errorMessage =
+            odooError.data?.message ||
+            odooError.message ||
+            "Identifiants incorrects";
+        } else {
+          switch (error.response.status) {
+            case 401:
+              errorMessage = "Identifiants incorrects";
+              break;
+            case 404:
+              errorMessage = "Base de donn�es introuvable";
+              break;
+            case 500:
+              errorMessage = "Erreur serveur. Veuillez r�essayer plus tard.";
+              break;
+            default:
+              errorMessage =
+                error.response.data?.message ||
+                error.userMessage ||
+                "Erreur de connexion";
+          }
         }
       } else if (error.request) {
-        errorMessage = 'Impossible de se connecter au serveur. V�rifiez votre connexion internet.';
+        errorMessage =
+          "Impossible de se connecter au serveur. V�rifiez votre connexion internet.";
       } else if (error.message) {
         errorMessage = error.message;
       }
 
-      throw {
+      return {
         success: false,
-        message: errorMessage,
-        error,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * R�cup�ration du profil utilisateur
+   * @returns {Promise<Object>} Profil de l'utilisateur
+   */
+  async getUserProfile() {
+    try {
+      const response = await api.get("/user/profile");
+
+      const { data } = response;
+
+      if (!data || !data.success || !data.profile) {
+        throw new Error("Impossible de récupérer le profil utilisateur");
+      }
+
+      return {
+        success: true,
+        profile: data.profile,
+      };
+    } catch (error) {
+      console.error("Erreur lors de la récupération du profil:", error);
+
+      let errorMessage = "Impossible de récupéré le profil";
+
+      if (error.response) {
+        switch (error.response.status) {
+          case 401:
+            errorMessage = "Session expirée. Veuillez vous reconnecter.";
+            break;
+          case 404:
+            errorMessage = "Profil non trouvé.";
+            break;
+          case 500:
+            errorMessage = "Erreur serveur. Veuillez réessayer plus tard.";
+            break;
+          default:
+            errorMessage = error.response.data?.message || errorMessage;
+        }
+      } else if (error.request) {
+        errorMessage =
+          "Impossible de se connecter au serveur. V�rifiez votre connexion internet.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      return {
+        success: false,
+        error: errorMessage,
       };
     }
   }
@@ -109,36 +191,40 @@ class AuthService {
    */
   async logout() {
     try {
-      // Tenter d'appeler l'endpoint de d�connexion sur le serveur
+      // Appeler l'endpoint de d�connexion sur le serveur
       try {
-        await api.post('/logout');
+        await api.post("/user/logout");
+        console.log("D�connexion serveur r�ussie");
       } catch (apiError) {
         // Continuer m�me si l'appel API �choue
-        console.warn('Erreur lors de l\'appel API de d�connexion:', apiError.message);
+        console.warn(
+          "Erreur lors de l'appel API de d�connexion:",
+          apiError.message
+        );
       }
 
       // Supprimer les donn�es locales via le service API
       await apiLogout();
 
-      console.log('D�connexion r�ussie');
+      console.log("D�connexion r�ussie");
 
       return {
         success: true,
-        message: 'D�connexion r�ussie',
+        message: "D�connexion r�ussie",
       };
     } catch (error) {
-      console.error('Erreur lors de la d�connexion:', error);
+      console.error("Erreur lors de la d�connexion:", error);
 
       // M�me en cas d'erreur, on tente de nettoyer les donn�es locales
       try {
         await apiLogout();
       } catch (cleanupError) {
-        console.error('Erreur lors du nettoyage des donn�es:', cleanupError);
+        console.error("Erreur lors du nettoyage des donn�es:", cleanupError);
       }
 
       return {
         success: false,
-        message: 'Erreur lors de la d�connexion',
+        message: "Erreur lors de la d�connexion",
         error,
       };
     }
@@ -163,7 +249,10 @@ class AuthService {
 
       return true;
     } catch (error) {
-      console.error('Erreur lors de la v�rification de l\'authentification:', error);
+      console.error(
+        "Erreur lors de la v�rification de l'authentification:",
+        error
+      );
       return false;
     }
   }
@@ -182,7 +271,10 @@ class AuthService {
 
       return JSON.parse(userDataString);
     } catch (error) {
-      console.error('Erreur lors de la r�cup�ration des donn�es utilisateur:', error);
+      console.error(
+        "Erreur lors de la r�cup�ration des donn�es utilisateur:",
+        error
+      );
       return null;
     }
   }
@@ -195,7 +287,10 @@ class AuthService {
     try {
       return await AsyncStorage.getItem(STORAGE_KEYS.DATABASE);
     } catch (error) {
-      console.error('Erreur lors de la r�cup�ration de la base de donn�es:', error);
+      console.error(
+        "Erreur lors de la r�cup�ration de la base de donn�es:",
+        error
+      );
       return null;
     }
   }
@@ -208,7 +303,7 @@ class AuthService {
     try {
       return await AsyncStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
     } catch (error) {
-      console.error('Erreur lors de la r�cup�ration du token:', error);
+      console.error("Erreur lors de la r�cup�ration du token:", error);
       return null;
     }
   }
@@ -220,10 +315,10 @@ class AuthService {
   async validateSession() {
     try {
       // Effectuer une requ�te simple pour v�rifier la validit� de la session
-      const response = await api.get('/user/me');
+      const response = await api.get("/user/me");
       return response.status === 200;
     } catch (error) {
-      console.error('Session invalide:', error);
+      console.error("Session invalide:", error);
       return false;
     }
   }

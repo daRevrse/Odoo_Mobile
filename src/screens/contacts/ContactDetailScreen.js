@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -8,58 +8,64 @@ import {
   Image,
   Alert,
   Linking,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { contactService } from "../../services";
 
 export default function ContactDetailScreen({ route, navigation }) {
-  const { contact } = route.params || {
-    contact: {
-      name: "Contact",
-      email: "contact@example.com",
-      telephone: "+228 90 00 00 00",
-      entreprise: "Entreprise",
-      image: "https://i.pravatar.cc/150?img=1",
-      type: "Client",
-      adresse: "123 Avenue de la République",
-      ville: "Lomé",
-      pays: "Togo",
-      site: "www.example.com",
-    },
-  };
+  const { contact } = route.params || {};
+  const [deleting, setDeleting] = useState(false);
+
+  // Construire l'URL de l'avatar depuis Odoo ou utiliser un avatar par défaut
+  const avatarUri = contact?.imageUrl
+    ? contact.imageUrl
+    : `https://ui-avatars.com/api/?name=${encodeURIComponent(
+        contact?.name || "Contact"
+      )}&size=200&background=990000&color=fff`;
 
   const handleCall = () => {
+    const phone = contact?.phone || contact?.mobile;
+    if (!phone) {
+      Alert.alert("Erreur", "Aucun numéro de téléphone disponible");
+      return;
+    }
     Alert.alert("Appel", `Appeler ${contact.name} ?`, [
       { text: "Annuler", style: "cancel" },
       {
         text: "Appeler",
-        onPress: () => Linking.openURL(`tel:${contact.telephone}`),
+        onPress: () => Linking.openURL(`tel:${phone}`),
       },
     ]);
   };
 
   const handleEmail = () => {
+    if (!contact?.email) {
+      Alert.alert("Erreur", "Aucune adresse email disponible");
+      return;
+    }
     Linking.openURL(`mailto:${contact.email}`);
   };
 
   const handleMessage = () => {
-    navigation.navigate("Chat", {
-      conversation: {
-        nom: contact.name,
-        image: contact.image,
-      },
-    });
+    Alert.alert("Information", "Fonctionnalité de messagerie à venir");
   };
 
   const handleWhatsApp = () => {
-    const phone = contact.telephone.replace(/[^0-9]/g, "");
-    Linking.openURL(`whatsapp://send?phone=${phone}`);
+    const phone = contact?.mobile || contact?.phone;
+    if (!phone) {
+      Alert.alert("Erreur", "Aucun numéro de téléphone disponible");
+      return;
+    }
+    const phoneNumber = phone.replace(/[^0-9]/g, "");
+    Linking.openURL(`whatsapp://send?phone=${phoneNumber}`);
   };
 
   const handleWebsite = () => {
-    if (contact.site) {
-      const url = contact.site.startsWith("http")
-        ? contact.site
-        : `https://${contact.site}`;
+    if (contact?.website) {
+      const url = contact.website.startsWith("http")
+        ? contact.website
+        : `https://${contact.website}`;
       Linking.openURL(url);
     }
   };
@@ -68,7 +74,7 @@ export default function ContactDetailScreen({ route, navigation }) {
     navigation.navigate("AddContact", { contact });
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     Alert.alert(
       "Supprimer le contact",
       `Voulez-vous vraiment supprimer ${contact.name} ?`,
@@ -77,10 +83,38 @@ export default function ContactDetailScreen({ route, navigation }) {
         {
           text: "Supprimer",
           style: "destructive",
-          onPress: () => navigation.goBack(),
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              await contactService.deleteContact(contact.id);
+              Alert.alert("Succès", "Contact supprimé avec succès");
+              navigation.goBack();
+            } catch (error) {
+              Alert.alert(
+                "Erreur",
+                error.message || "Impossible de supprimer le contact"
+              );
+            } finally {
+              setDeleting(false);
+            }
+          },
         },
       ]
     );
+  };
+
+  // Déterminer le type de contact basé sur les données Odoo
+  const getContactType = () => {
+    if (contact?.is_company) {
+      return "Entreprise";
+    }
+    if (contact?.customer_rank > 0) {
+      return "Client";
+    }
+    if (contact?.supplier_rank > 0) {
+      return "Fournisseur";
+    }
+    return "Contact";
   };
 
   const getTypeColor = (type) => {
@@ -89,12 +123,29 @@ export default function ContactDetailScreen({ route, navigation }) {
         return "#3498DB";
       case "Fournisseur":
         return "#27AE60";
-      case "Partenaire":
+      case "Entreprise":
         return "#F39C12";
       default:
         return "#999";
     }
   };
+
+  // Vérifier si le contact a des données
+  if (!contact) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <Text style={styles.errorText}>Contact introuvable</Text>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonText}>Retour</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const contactType = getContactType();
 
   const InfoRow = ({ icon, label, value, onPress }) => (
     <TouchableOpacity
@@ -131,19 +182,24 @@ export default function ContactDetailScreen({ route, navigation }) {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Section Profil */}
         <View style={styles.profileSection}>
-          <Image source={{ uri: contact.image }} style={styles.avatar} />
-          <Text style={styles.name}>{contact.name}</Text>
-          <Text style={styles.entreprise}>{contact.entreprise}</Text>
+          <Image source={{ uri: avatarUri }} style={styles.avatar} />
+          <Text style={styles.name}>{contact.name || "Sans nom"}</Text>
+          {contact.function && (
+            <Text style={styles.entreprise}>{contact.function}</Text>
+          )}
+          {contact.parent_id && contact.parent_id[1] && (
+            <Text style={styles.entreprise}>{contact.parent_id[1]}</Text>
+          )}
           <View
             style={[
               styles.typeBadge,
-              { backgroundColor: `${getTypeColor(contact.type)}20` },
+              { backgroundColor: `${getTypeColor(contactType)}20` },
             ]}
           >
             <Text
-              style={[styles.typeText, { color: getTypeColor(contact.type) }]}
+              style={[styles.typeText, { color: getTypeColor(contactType) }]}
             >
-              {contact.type}
+              {contactType}
             </Text>
           </View>
         </View>
@@ -185,81 +241,132 @@ export default function ContactDetailScreen({ route, navigation }) {
         {/* Informations */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>INFORMATIONS DE CONTACT</Text>
-          <InfoRow
-            icon="call-outline"
-            label="Téléphone"
-            value={contact.telephone}
-            onPress={handleCall}
-          />
-          <InfoRow
-            icon="mail-outline"
-            label="Email"
-            value={contact.email}
-            onPress={handleEmail}
-          />
-          <InfoRow
-            icon="globe-outline"
-            label="Site web"
-            value={contact.site}
-            onPress={contact.site ? handleWebsite : null}
-          />
+          {(contact.phone || contact.mobile) && (
+            <>
+              {contact.phone && (
+                <InfoRow
+                  icon="call-outline"
+                  label="Téléphone"
+                  value={contact.phone}
+                  onPress={handleCall}
+                />
+              )}
+              {contact.mobile && (
+                <InfoRow
+                  icon="phone-portrait-outline"
+                  label="Mobile"
+                  value={contact.mobile}
+                  onPress={handleCall}
+                />
+              )}
+            </>
+          )}
+          {contact.email && (
+            <InfoRow
+              icon="mail-outline"
+              label="Email"
+              value={contact.email}
+              onPress={handleEmail}
+            />
+          )}
+          {contact.website && (
+            <InfoRow
+              icon="globe-outline"
+              label="Site web"
+              value={contact.website}
+              onPress={handleWebsite}
+            />
+          )}
+          {!contact.phone &&
+            !contact.mobile &&
+            !contact.email &&
+            !contact.website && (
+              <Text style={styles.noDataText}>
+                Aucune information de contact disponible
+              </Text>
+            )}
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>LOCALISATION</Text>
-          <InfoRow
-            icon="location-outline"
-            label="Adresse"
-            value={contact.adresse}
-          />
-          <InfoRow
-            icon="location-outline"
-            label="Ville"
-            value={contact.ville}
-          />
-          <InfoRow icon="flag-outline" label="Pays" value={contact.pays} />
-        </View>
-
-        {/* Activité récente */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>ACTIVITÉ RÉCENTE</Text>
-          <View style={styles.activityItem}>
-            <View style={styles.activityIcon}>
-              <Ionicons name="calendar-outline" size={16} color="#3498DB" />
-            </View>
-            <View style={styles.activityContent}>
-              <Text style={styles.activityTitle}>Réunion planifiée</Text>
-              <Text style={styles.activityDate}>Demain à 10:00</Text>
-            </View>
-          </View>
-          <View style={styles.activityItem}>
-            <View style={styles.activityIcon}>
-              <Ionicons
-                name="document-text-outline"
-                size={16}
-                color="#27AE60"
+        {/* Localisation */}
+        {(contact.street ||
+          contact.city ||
+          contact.zip ||
+          contact.state_id ||
+          contact.country_id) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>LOCALISATION</Text>
+            {contact.street && (
+              <InfoRow
+                icon="location-outline"
+                label="Adresse"
+                value={contact.street}
               />
-            </View>
-            <View style={styles.activityContent}>
-              <Text style={styles.activityTitle}>Devis envoyé</Text>
-              <Text style={styles.activityDate}>Il y a 2 jours</Text>
-            </View>
+            )}
+            {(contact.zip || contact.city) && (
+              <InfoRow
+                icon="business-outline"
+                label="Ville"
+                value={`${contact.zip || ""} ${contact.city || ""}`.trim()}
+              />
+            )}
+            {contact.state_id && contact.state_id[1] && (
+              <InfoRow
+                icon="map-outline"
+                label="Région"
+                value={contact.state_id[1]}
+              />
+            )}
+            {contact.country_id && contact.country_id[1] && (
+              <InfoRow
+                icon="flag-outline"
+                label="Pays"
+                value={contact.country_id[1]}
+              />
+            )}
           </View>
-          <View style={styles.activityItem}>
-            <View style={styles.activityIcon}>
-              <Ionicons name="call-outline" size={16} color="#F39C12" />
-            </View>
-            <View style={styles.activityContent}>
-              <Text style={styles.activityTitle}>Dernier appel</Text>
-              <Text style={styles.activityDate}>Il y a 5 jours</Text>
-            </View>
+        )}
+
+        {/* Informations additionnelles */}
+        {(contact.vat || contact.ref || contact.comment) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>INFORMATIONS ADDITIONNELLES</Text>
+            {contact.vat && (
+              <InfoRow
+                icon="document-text-outline"
+                label="N° TVA"
+                value={contact.vat}
+              />
+            )}
+            {contact.ref && (
+              <InfoRow
+                icon="pricetag-outline"
+                label="Référence"
+                value={contact.ref}
+              />
+            )}
+            {contact.comment && (
+              <View style={styles.commentSection}>
+                <Text style={styles.commentLabel}>Notes :</Text>
+                <Text style={styles.commentText}>{contact.comment}</Text>
+              </View>
+            )}
           </View>
-        </View>
+        )}
 
         {/* Bouton supprimer */}
-        <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-          <Ionicons name="trash-outline" size={20} color="#E74C3C" />
-          <Text style={styles.deleteButtonText}>Supprimer le contact</Text>
+        <TouchableOpacity
+          style={[styles.deleteButton, deleting && styles.deleteButtonDisabled]}
+          onPress={handleDelete}
+          disabled={deleting}
+        >
+          {deleting ? (
+            <ActivityIndicator size="small" color="#E74C3C" />
+          ) : (
+            <>
+              <Ionicons name="trash-outline" size={20} color="#E74C3C" />
+              <Text style={styles.deleteButtonText}>Supprimer le contact</Text>
+            </>
+          )}
         </TouchableOpacity>
 
         <View style={styles.bottomSpace} />
@@ -452,6 +559,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#FADBD8",
   },
+  deleteButtonDisabled: {
+    opacity: 0.5,
+  },
   deleteButtonText: {
     color: "#E74C3C",
     fontWeight: "600",
@@ -461,5 +571,53 @@ const styles = StyleSheet.create({
 
   bottomSpace: {
     height: 40,
+  },
+
+  // Error state
+  centerContent: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  errorText: {
+    fontSize: 16,
+    color: "#999",
+    marginBottom: 20,
+  },
+  backButton: {
+    backgroundColor: "#990000",
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  backButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+
+  // No data text
+  noDataText: {
+    fontSize: 14,
+    color: "#999",
+    fontStyle: "italic",
+    paddingVertical: 16,
+    textAlign: "center",
+  },
+
+  // Comment section
+  commentSection: {
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F5F5F5",
+  },
+  commentLabel: {
+    fontSize: 13,
+    color: "#999",
+    marginBottom: 8,
+  },
+  commentText: {
+    fontSize: 15,
+    color: "#333",
+    lineHeight: 22,
   },
 });

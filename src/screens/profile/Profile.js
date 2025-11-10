@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,11 +8,39 @@ import {
   ScrollView,
   StatusBar,
   Alert,
+  ActivityIndicator,
 } from "react-native";
-import Icon from "react-native-vector-icons/Ionicons";
+import { Ionicons } from "@expo/vector-icons";
 import { authService } from "../../services";
 
 export default function ProfileScreen({ navigation }) {
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  const loadProfile = async () => {
+    setLoading(true);
+    try {
+      const result = await authService.getUserProfile();
+
+      if (result.success) {
+        setProfile(result.profile);
+      } else {
+        Alert.alert(
+          "Erreur",
+          result.error || "Impossible de charger le profil"
+        );
+      }
+    } catch (error) {
+      Alert.alert("Erreur", "Une erreur s'est produite");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleEditProfile = () => navigation.navigate("EditProfile");
   const handleLanguagePress = () => navigation.navigate("Langues");
   const handleSecurityPress = () => navigation.navigate("Security");
@@ -55,16 +83,30 @@ export default function ProfileScreen({ navigation }) {
   const MenuOption = ({ icon, title, onPress, isPage }) => (
     <TouchableOpacity style={styles.menuOption} onPress={onPress}>
       <View style={styles.menuContent}>
-        <Icon name={icon} size={24} color="#990000" style={styles.menuIcon} />
+        <Ionicons
+          name={icon}
+          size={24}
+          color="#990000"
+          style={styles.menuIcon}
+        />
         <Text style={styles.menuText}>{title}</Text>
       </View>
-      <Icon
+      <Ionicons
         name={isPage ? "chevron-forward" : "chevron-down"}
         size={20}
         color="#ccc"
       />
     </TouchableOpacity>
   );
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color="#990000" />
+        <Text style={styles.loadingText}>Chargement du profil...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -75,7 +117,7 @@ export default function ProfileScreen({ navigation }) {
           onPress={() => navigation.goBack()}
           style={styles.backButton}
         >
-          <Icon name="arrow-back" size={24} color="#333" />
+          <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Profil</Text>
         <View style={styles.headerSpacer} />
@@ -86,18 +128,26 @@ export default function ProfileScreen({ navigation }) {
           <View style={styles.avatarContainer}>
             <Image
               source={{
-                uri: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
+                uri:
+                  profile?.image_url ||
+                  `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                    profile?.name || "User"
+                  )}&size=150&background=990000&color=fff`,
               }}
               style={styles.profileImage}
             />
             <TouchableOpacity style={styles.photoIconButton}>
-              <Icon name="camera" size={16} color="#fff" />
+              <Ionicons name="camera" size={16} color="#fff" />
             </TouchableOpacity>
           </View>
 
           <View style={styles.profileInfo}>
-            <Text style={styles.userName}>GASSOU Gilles</Text>
-            <Text style={styles.userEmail}>koffjean@gmail.com</Text>
+            <Text style={styles.userName}>
+              {profile?.name || "Utilisateur"}
+            </Text>
+            <Text style={styles.userEmail}>
+              {profile?.email || profile?.login || "N/A"}
+            </Text>
             <TouchableOpacity
               style={styles.editButton}
               onPress={handleEditProfile}
@@ -147,6 +197,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     paddingTop: 40,
     paddingHorizontal: 16,
+  },
+  centerContent: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: "#666",
   },
   header: {
     flexDirection: "row",

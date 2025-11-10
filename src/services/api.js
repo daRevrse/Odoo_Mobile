@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Configuration de l'API
 export const API_BASE_URL = "http://161.97.125.198:11077/bs_mobile_api";
+export const ODOO_BASE_URL = "http://161.97.125.198:11077";
 
 // Clés de stockage
 export const STORAGE_KEYS = {
@@ -12,16 +13,20 @@ export const STORAGE_KEYS = {
   DATABASE: "database",
 };
 
-// Création de l'instance Axios
+// Store pour les cookies de session
+let sessionCookies = "";
+
+// Création de l'instance Axios avec support des cookies
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
   headers: {
     "Content-Type": "application/json",
   },
+  withCredentials: true, // On gère manuellement les cookies pour React Native
 });
 
-// Intercepteur de requête pour ajouter le token d'authentification
+// Intercepteur de requête pour ajouter le token d'authentification et les cookies
 api.interceptors.request.use(
   async (config) => {
     try {
@@ -32,9 +37,14 @@ api.interceptors.request.use(
         config.headers.Authorization = `Bearer ${token}`;
       }
 
+      // Ajouter les cookies de session s'ils existent
+      if (sessionCookies) {
+        config.headers.Cookie = sessionCookies;
+      }
+
       return config;
     } catch (error) {
-      console.error("Erreur lors de la récupération du token:", error);
+      console.error("Erreur lors de la configuration de la requête:", error);
       return config;
     }
   },
@@ -43,10 +53,28 @@ api.interceptors.request.use(
   }
 );
 
-// Intercepteur de réponse pour gérer les erreurs
+// Intercepteur de réponse pour gérer les erreurs et capturer les cookies
 api.interceptors.response.use(
   (response) => {
-    // Retourner directement les réponses réussies
+    // Capturer les cookies de la réponse
+    const setCookieHeader = response.headers["set-cookie"];
+    if (setCookieHeader) {
+      // Extraire et stocker les cookies
+      const cookies = Array.isArray(setCookieHeader)
+        ? setCookieHeader
+        : [setCookieHeader];
+
+      // Parser et stocker les cookies
+      const cookieStrings = cookies.map((cookie) => {
+        // Extraire seulement la partie "nom=valeur" sans les attributs
+        const cookieParts = cookie.split(";")[0];
+        return cookieParts;
+      });
+
+      sessionCookies = cookieStrings.join("; ");
+      console.log("Cookies de session capturés et stockés automatiquement");
+    }
+
     return response;
   },
   async (error) => {
@@ -147,6 +175,9 @@ const handleLogout = async () => {
       STORAGE_KEYS.DATABASE,
     ]);
 
+    // Nettoyer les cookies de session
+    sessionCookies = "";
+
     // Note: La navigation vers l'écran de connexion devra être gérée
     // depuis les composants React Native en écoutant les changements d'état
     console.log("Utilisateur déconnecté");
@@ -184,5 +215,65 @@ export const setAuthToken = async (token, refreshToken = null) => {
 
 // Fonction pour se déconnecter (export pour utilisation dans l'app)
 export const logout = handleLogout;
+
+// Fonction pour obtenir les cookies actuels (utile pour le debug)
+export const getSessionCookies = () => {
+  return sessionCookies;
+};
+
+// Fonction pour effacer manuellement les cookies si nécessaire
+export const clearSessionCookies = () => {
+  sessionCookies = "";
+  console.log("Cookies de session effacés");
+};
+
+// Fonction pour initialiser la session en récupérant le cookie depuis Odoo
+export const initializeSession = async () => {
+  try {
+    console.log("Initialisation de la session Odoo...");
+
+    // Appel POST sur /web/database/list pour obtenir le cookie de session
+    const response = await axios.post(
+      `${ODOO_BASE_URL}/web/database/list`,
+      {
+        jsonrpc: "2.0",
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        timeout: 10000,
+        validateStatus: (status) => status >= 200 && status < 500,
+      }
+    );
+
+    // Capturer les cookies de la réponse
+    const setCookieHeader = response.headers["set-cookie"];
+
+    if (setCookieHeader) {
+      const cookies = Array.isArray(setCookieHeader)
+        ? setCookieHeader
+        : [setCookieHeader];
+
+      const cookieStrings = cookies.map((cookie) => {
+        const cookieParts = cookie.split(";")[0];
+        return cookieParts;
+      });
+
+      sessionCookies = cookieStrings.join("; ");
+      console.log("✓ Cookie de session initialisé:", sessionCookies);
+      return true;
+    } else {
+      console.warn("⚠ Aucun cookie reçu lors de l'initialisation");
+      return false;
+    }
+  } catch (error) {
+    console.error(
+      "Erreur lors de l'initialisation de la session:",
+      error.message
+    );
+    return false;
+  }
+};
 
 export default api;

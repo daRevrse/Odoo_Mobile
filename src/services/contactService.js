@@ -1,18 +1,85 @@
 import api from './api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// ClÃ© de stockage pour le cache des contacts
+const CONTACTS_CACHE_KEY = 'contacts_cache';
+const CONTACTS_CACHE_TIMESTAMP_KEY = 'contacts_cache_timestamp';
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes en millisecondes
 
 /**
  * Service de gestion des contacts pour l'application Odoo Mobile
  */
 class ContactService {
   /**
-   * Récupération de tous les contacts
+   * Rï¿½cupï¿½ration des contacts depuis le cache
+   * @returns {Promise<Object|null>} Contacts en cache ou null
+   * @private
+   */
+  async _getContactsFromCache() {
+    try {
+      const cachedData = await AsyncStorage.getItem(CONTACTS_CACHE_KEY);
+      const timestamp = await AsyncStorage.getItem(CONTACTS_CACHE_TIMESTAMP_KEY);
+
+      if (cachedData && timestamp) {
+        const contacts = JSON.parse(cachedData);
+        const cacheAge = Date.now() - parseInt(timestamp, 10);
+
+        console.log(`ğŸ“¦ Cache trouvÃ©: ${contacts.length} contacts (Ã¢ge: ${Math.round(cacheAge / 1000)}s)`);
+
+        return {
+          contacts,
+          isCached: true,
+          cacheAge,
+          isStale: cacheAge > CACHE_DURATION,
+        };
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Erreur lors de la lecture du cache:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Sauvegarde des contacts dans le cache
+   * @param {Array} contacts - Liste des contacts Ã  mettre en cache
+   * @private
+   */
+  async _saveContactsToCache(contacts) {
+    try {
+      await AsyncStorage.setItem(CONTACTS_CACHE_KEY, JSON.stringify(contacts));
+      await AsyncStorage.setItem(CONTACTS_CACHE_TIMESTAMP_KEY, Date.now().toString());
+      console.log(`ğŸ’¾ ${contacts.length} contacts mis en cache`);
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde du cache:', error);
+    }
+  }
+
+  /**
+   * Effacement du cache des contacts
+   */
+  async clearCache() {
+    try {
+      await AsyncStorage.multiRemove([CONTACTS_CACHE_KEY, CONTACTS_CACHE_TIMESTAMP_KEY]);
+      console.log('ğŸ—‘ï¸ Cache des contacts effacÃ©');
+    } catch (error) {
+      console.error('Erreur lors de l\'effacement du cache:', error);
+    }
+  }
+
+
+  /**
+   * Rï¿½cupï¿½ration de tous les contacts avec systï¿½me de cache
    * @param {Object} options - Options de pagination et filtrage
-   * @param {number} options.limit - Nombre de contacts à récupérer (défaut: 50)
-   * @param {number} options.offset - Décalage pour la pagination (défaut: 0)
+   * @param {number} options.limit - Nombre de contacts ï¿½ rï¿½cupï¿½rer (dï¿½faut: 50)
+   * @param {number} options.offset - Dï¿½calage pour la pagination (dï¿½faut: 0)
    * @param {string} options.search - Terme de recherche optionnel
    * @param {Array} options.domain - Filtre Odoo domain optionnel
-   * @param {Array} options.fields - Champs spécifiques à récupérer
-   * @returns {Promise<Object>} Liste des contacts avec métadonnées
+   * @param {Array} options.fields - Champs spï¿½cifiques ï¿½ rï¿½cupï¿½rer
+   * @param {boolean} options.forceRefresh - Forcer le rechargement sans cache (dï¿½faut: false)
+   * @param {boolean} options.useCache - Utiliser le cache si disponible (dï¿½faut: true)
+   * @returns {Promise<Object>} Liste des contacts avec mï¿½tadonnï¿½es
    */
   async getContacts(options = {}) {
     try {
@@ -22,9 +89,37 @@ class ContactService {
         search = '',
         domain = [],
         fields = [],
+        forceRefresh = false,
+        useCache = true,
       } = options;
 
-      // Construire les paramètres de la requête
+      // VÃ©rifier si on peut utiliser le cache (uniquement pour les requÃªtes simples sans filtres)
+      const isSimpleQuery = !search && domain.length === 0 && offset === 0;
+      const canUseCache = useCache && isSimpleQuery && !forceRefresh;
+
+      // Essayer de rÃ©cupÃ©rer depuis le cache si applicable
+      if (canUseCache) {
+        const cachedResult = await this._getContactsFromCache();
+
+        if (cachedResult) {
+          const { contacts: cachedContacts, isStale } = cachedResult;
+
+          // Retourner immÃ©diatement les donnÃ©es en cache
+          return {
+            success: true,
+            data: cachedContacts,
+            contacts: cachedContacts,
+            total: cachedContacts.length,
+            count: cachedContacts.length,
+            limit,
+            offset,
+            fromCache: true,
+            isStale,
+          };
+        }
+      }
+
+      // Construire les paramÃ¨tres de la requÃªte
       const params = {
         limit,
         offset,
@@ -42,38 +137,55 @@ class ContactService {
         params.fields = JSON.stringify(fields);
       }
 
-      // Appel API pour récupérer les contacts
-      const response = await api.get('/contacts', { params });
+      // Appel API pour rÃ©cupÃ©rer les contacts depuis /res.partner
+      console.log('ğŸŒ Chargement des contacts depuis le serveur...');
+      const response = await api.get('/res.partner', { params });
 
       const { data } = response;
 
-      console.log(`${data.contacts?.length || 0} contact(s) récupéré(s)`);
+      // La structure de la rÃ©ponse Odoo est : { count: number, results: [] }
+      const contacts = data.results || [];
+      const count = data.count || 0;
+
+      console.log(`âœ… ${count} contact(s) rÃ©cupÃ©rÃ©(s) depuis le serveur`);
+
+      // Sauvegarder dans le cache si c'est une requÃªte simple
+      if (isSimpleQuery) {
+        await this._saveContactsToCache(contacts);
+      }
 
       return {
         success: true,
-        contacts: data.contacts || [],
-        total: data.total || 0,
+        data: contacts,
+        contacts: contacts, // Pour compatibilitÃ© avec l'ancien code
+        total: count,
+        count: count,
         limit,
         offset,
+        fromCache: false,
       };
     } catch (error) {
-      console.error('Erreur lors de la récupération des contacts:', error);
+      console.error('Erreur lors de la rï¿½cupï¿½ration des contacts:', error);
 
-      const errorMessage = this._handleError(error, 'Impossible de récupérer les contacts');
+      const errorMessage = this._handleError(error, 'Impossible de rï¿½cupï¿½rer les contacts');
 
-      throw {
+      return {
         success: false,
+        error: errorMessage,
         message: errorMessage,
-        error,
+        data: [],
+        contacts: [],
+        total: 0,
+        count: 0,
       };
     }
   }
 
   /**
-   * Récupération d'un contact spécifique par son ID
-   * @param {number} id - ID du contact à récupérer
-   * @param {Array} fields - Champs spécifiques à récupérer (optionnel)
-   * @returns {Promise<Object>} Données du contact
+   * Rï¿½cupï¿½ration d'un contact spï¿½cifique par son ID
+   * @param {number} id - ID du contact ï¿½ rï¿½cupï¿½rer
+   * @param {Array} fields - Champs spï¿½cifiques ï¿½ rï¿½cupï¿½rer (optionnel)
+   * @returns {Promise<Object>} Donnï¿½es du contact
    */
   async getContactById(id, fields = []) {
     try {
@@ -82,31 +194,32 @@ class ContactService {
         throw new Error('ID de contact invalide');
       }
 
-      // Construire les paramètres de la requête
+      // Construire les paramï¿½tres de la requï¿½te
       const params = {};
       if (fields && fields.length > 0) {
         params.fields = JSON.stringify(fields);
       }
 
-      // Appel API pour récupérer le contact
-      const response = await api.get(`/contacts/${id}`, { params });
+      // Appel API pour rï¿½cupï¿½rer le contact
+      const response = await api.get(`/res.partner/${id}`, { params });
 
       const { data } = response;
 
-      if (!data || !data.contact) {
-        throw new Error('Contact non trouvé');
+      if (!data) {
+        throw new Error('Contact non trouvï¿½');
       }
 
-      console.log('Contact récupéré:', data.contact.name || id);
+      console.log('Contact rï¿½cupï¿½rï¿½:', data.name || id);
 
       return {
         success: true,
-        contact: data.contact,
+        contact: data,
+        data: data,
       };
     } catch (error) {
-      console.error(`Erreur lors de la récupération du contact ${id}:`, error);
+      console.error(`Erreur lors de la rï¿½cupï¿½ration du contact ${id}:`, error);
 
-      const errorMessage = this._handleError(error, 'Impossible de récupérer le contact');
+      const errorMessage = this._handleError(error, 'Impossible de rï¿½cupï¿½rer le contact');
 
       throw {
         success: false,
@@ -117,48 +230,52 @@ class ContactService {
   }
 
   /**
-   * Création d'un nouveau contact
-   * @param {Object} contactData - Données du contact à créer
+   * Crï¿½ation d'un nouveau contact
+   * @param {Object} contactData - Donnï¿½es du contact ï¿½ crï¿½er
    * @param {string} contactData.name - Nom du contact (obligatoire)
    * @param {string} contactData.email - Email du contact
-   * @param {string} contactData.phone - Téléphone du contact
+   * @param {string} contactData.phone - Tï¿½lï¿½phone du contact
    * @param {string} contactData.mobile - Mobile du contact
    * @param {string} contactData.street - Adresse du contact
    * @param {string} contactData.city - Ville du contact
    * @param {string} contactData.zip - Code postal du contact
    * @param {number} contactData.country_id - ID du pays
-   * @param {boolean} contactData.is_company - Est une société
-   * @param {number} contactData.parent_id - ID du contact parent (si c'est un contact d'une société)
-   * @returns {Promise<Object>} Contact créé avec son ID
+   * @param {boolean} contactData.is_company - Est une sociï¿½tï¿½
+   * @param {number} contactData.parent_id - ID du contact parent (si c'est un contact d'une sociï¿½tï¿½)
+   * @returns {Promise<Object>} Contact crï¿½ï¿½ avec son ID
    */
   async createContact(contactData) {
     try {
-      // Validation des données obligatoires
+      // Validation des donnï¿½es obligatoires
       if (!contactData || !contactData.name) {
         throw new Error('Le nom du contact est obligatoire');
       }
 
-      // Appel API pour créer le contact
-      const response = await api.post('/contacts', contactData);
+      // Appel API pour crï¿½er le contact
+      const response = await api.post('/res.partner', contactData);
 
       const { data } = response;
 
       if (!data || !data.id) {
-        throw new Error('Échec de la création du contact');
+        throw new Error('ï¿½chec de la crï¿½ation du contact');
       }
 
-      console.log('Contact créé avec succès:', data.id);
+      console.log('Contact crï¿½ï¿½ avec succï¿½s:', data.id);
+
+      // Effacer le cache pour forcer le rechargement
+      await this.clearCache();
 
       return {
         success: true,
-        contact: data.contact || data,
+        contact: data,
+        data: data,
         id: data.id,
-        message: 'Contact créé avec succès',
+        message: 'Contact crï¿½ï¿½ avec succï¿½s',
       };
     } catch (error) {
-      console.error('Erreur lors de la création du contact:', error);
+      console.error('Erreur lors de la crï¿½ation du contact:', error);
 
-      const errorMessage = this._handleError(error, 'Impossible de créer le contact');
+      const errorMessage = this._handleError(error, 'Impossible de crï¿½er le contact');
 
       throw {
         success: false,
@@ -169,10 +286,10 @@ class ContactService {
   }
 
   /**
-   * Mise à jour d'un contact existant
-   * @param {number} id - ID du contact à mettre à jour
-   * @param {Object} contactData - Données du contact à mettre à jour
-   * @returns {Promise<Object>} Contact mis à jour
+   * Mise ï¿½ jour d'un contact existant
+   * @param {number} id - ID du contact ï¿½ mettre ï¿½ jour
+   * @param {Object} contactData - Donnï¿½es du contact ï¿½ mettre ï¿½ jour
+   * @returns {Promise<Object>} Contact mis ï¿½ jour
    */
   async updateContact(id, contactData) {
     try {
@@ -181,27 +298,31 @@ class ContactService {
         throw new Error('ID de contact invalide');
       }
 
-      // Validation des données
+      // Validation des donnï¿½es
       if (!contactData || Object.keys(contactData).length === 0) {
-        throw new Error('Aucune donnée à mettre à jour');
+        throw new Error('Aucune donnï¿½e ï¿½ mettre ï¿½ jour');
       }
 
-      // Appel API pour mettre à jour le contact
-      const response = await api.put(`/contacts/${id}`, contactData);
+      // Appel API pour mettre ï¿½ jour le contact
+      const response = await api.put(`/res.partner/${id}`, contactData);
 
       const { data } = response;
 
-      console.log('Contact mis à jour avec succès:', id);
+      console.log('Contact mis ï¿½ jour avec succï¿½s:', id);
+
+      // Effacer le cache pour forcer le rechargement
+      await this.clearCache();
 
       return {
         success: true,
-        contact: data.contact || data,
-        message: 'Contact mis à jour avec succès',
+        contact: data,
+        data: data,
+        message: 'Contact mis ï¿½ jour avec succï¿½s',
       };
     } catch (error) {
-      console.error(`Erreur lors de la mise à jour du contact ${id}:`, error);
+      console.error(`Erreur lors de la mise ï¿½ jour du contact ${id}:`, error);
 
-      const errorMessage = this._handleError(error, 'Impossible de mettre à jour le contact');
+      const errorMessage = this._handleError(error, 'Impossible de mettre ï¿½ jour le contact');
 
       throw {
         success: false,
@@ -213,8 +334,8 @@ class ContactService {
 
   /**
    * Suppression d'un contact
-   * @param {number} id - ID du contact à supprimer
-   * @returns {Promise<Object>} Résultat de la suppression
+   * @param {number} id - ID du contact ï¿½ supprimer
+   * @returns {Promise<Object>} Rï¿½sultat de la suppression
    */
   async deleteContact(id) {
     try {
@@ -224,13 +345,16 @@ class ContactService {
       }
 
       // Appel API pour supprimer le contact
-      await api.delete(`/contacts/${id}`);
+      await api.delete(`/res.partner/${id}`);
 
-      console.log('Contact supprimé avec succès:', id);
+      console.log('Contact supprimï¿½ avec succï¿½s:', id);
+
+      // Effacer le cache pour forcer le rechargement
+      await this.clearCache();
 
       return {
         success: true,
-        message: 'Contact supprimé avec succès',
+        message: 'Contact supprimï¿½ avec succï¿½s',
         id,
       };
     } catch (error) {
@@ -249,8 +373,8 @@ class ContactService {
   /**
    * Recherche de contacts
    * @param {string} searchTerm - Terme de recherche
-   * @param {number} limit - Nombre maximum de résultats
-   * @returns {Promise<Object>} Résultats de la recherche
+   * @param {number} limit - Nombre maximum de rï¿½sultats
+   * @returns {Promise<Object>} Rï¿½sultats de la recherche
    */
   async searchContacts(searchTerm, limit = 20) {
     try {
@@ -277,15 +401,15 @@ class ContactService {
   }
 
   /**
-   * Récupération des contacts d'une société
-   * @param {number} companyId - ID de la société
-   * @param {number} limit - Nombre maximum de résultats
-   * @returns {Promise<Object>} Liste des contacts de la société
+   * Rï¿½cupï¿½ration des contacts d'une sociï¿½tï¿½
+   * @param {number} companyId - ID de la sociï¿½tï¿½
+   * @param {number} limit - Nombre maximum de rï¿½sultats
+   * @returns {Promise<Object>} Liste des contacts de la sociï¿½tï¿½
    */
   async getCompanyContacts(companyId, limit = 50) {
     try {
       if (!companyId || typeof companyId !== 'number') {
-        throw new Error('ID de société invalide');
+        throw new Error('ID de sociï¿½tï¿½ invalide');
       }
 
       // Utiliser le domain Odoo pour filtrer par parent_id
@@ -295,9 +419,9 @@ class ContactService {
         offset: 0,
       });
     } catch (error) {
-      console.error(`Erreur lors de la récupération des contacts de la société ${companyId}:`, error);
+      console.error(`Erreur lors de la rï¿½cupï¿½ration des contacts de la sociï¿½tï¿½ ${companyId}:`, error);
 
-      const errorMessage = this._handleError(error, 'Impossible de récupérer les contacts de la société');
+      const errorMessage = this._handleError(error, 'Impossible de rï¿½cupï¿½rer les contacts de la sociï¿½tï¿½');
 
       throw {
         success: false,
@@ -308,15 +432,15 @@ class ContactService {
   }
 
   /**
-   * Récupération des sociétés uniquement (contacts avec is_company = true)
+   * Rï¿½cupï¿½ration des sociï¿½tï¿½s uniquement (contacts avec is_company = true)
    * @param {Object} options - Options de pagination
-   * @returns {Promise<Object>} Liste des sociétés
+   * @returns {Promise<Object>} Liste des sociï¿½tï¿½s
    */
   async getCompanies(options = {}) {
     try {
       const { limit = 50, offset = 0, search = '' } = options;
 
-      // Filtrer pour récupérer uniquement les sociétés
+      // Filtrer pour rï¿½cupï¿½rer uniquement les sociï¿½tï¿½s
       return await this.getContacts({
         domain: [['is_company', '=', true]],
         limit,
@@ -324,9 +448,9 @@ class ContactService {
         search,
       });
     } catch (error) {
-      console.error('Erreur lors de la récupération des sociétés:', error);
+      console.error('Erreur lors de la rï¿½cupï¿½ration des sociï¿½tï¿½s:', error);
 
-      const errorMessage = this._handleError(error, 'Impossible de récupérer les sociétés');
+      const errorMessage = this._handleError(error, 'Impossible de rï¿½cupï¿½rer les sociï¿½tï¿½s');
 
       throw {
         success: false,
@@ -337,30 +461,30 @@ class ContactService {
   }
 
   /**
-   * Gestion centralisée des erreurs
-   * @param {Error} error - Erreur à traiter
-   * @param {string} defaultMessage - Message par défaut
-   * @returns {string} Message d'erreur formaté
+   * Gestion centralisï¿½e des erreurs
+   * @param {Error} error - Erreur ï¿½ traiter
+   * @param {string} defaultMessage - Message par dï¿½faut
+   * @returns {string} Message d'erreur formatï¿½
    * @private
    */
   _handleError(error, defaultMessage) {
     if (error.response) {
       switch (error.response.status) {
         case 400:
-          return error.response.data?.message || 'Données invalides';
+          return error.response.data?.message || 'Donnï¿½es invalides';
         case 404:
-          return 'Contact non trouvé';
+          return 'Contact non trouvï¿½';
         case 409:
-          return 'Conflit: Ce contact existe déjà';
+          return 'Conflit: Ce contact existe dï¿½jï¿½';
         case 422:
-          return error.response.data?.message || 'Données non valides';
+          return error.response.data?.message || 'Donnï¿½es non valides';
         case 500:
-          return 'Erreur serveur. Veuillez réessayer plus tard.';
+          return 'Erreur serveur. Veuillez rï¿½essayer plus tard.';
         default:
           return error.response.data?.message || error.userMessage || defaultMessage;
       }
     } else if (error.request) {
-      return 'Impossible de se connecter au serveur. Vérifiez votre connexion internet.';
+      return 'Impossible de se connecter au serveur. Vï¿½rifiez votre connexion internet.';
     } else if (error.message) {
       return error.message;
     }
