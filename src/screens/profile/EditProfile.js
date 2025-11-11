@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,34 +9,77 @@ import {
   StatusBar,
   Image,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import { authService } from "../../services";
 
 export default function EditProfile() {
   const navigation = useNavigation();
 
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [profile, setProfile] = useState(null);
   const [form, setForm] = useState({
-    prenom: "Gilles",
-    nom: "GASSOU",
-    email: "koffjean@gmail.com",
-    telephone: "+228 90 12 34 56",
-    poste: "Développeur Full Stack",
-    departement: "Informatique",
-    adresse: "123 Avenue de la République",
-    ville: "Lomé",
-    pays: "Togo",
-    bio: "Passionné par le développement web et mobile. Expert React Native.",
+    name: "",
+    email: "",
+    phone: "",
+    mobile: "",
+    function: "",
+    street: "",
+    city: "",
+    zip: "",
+    country_id: null,
   });
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  const loadProfile = async () => {
+    try {
+      const result = await authService.getUserProfile();
+
+      if (result.success) {
+        setProfile(result.profile);
+        setForm({
+          name: result.profile.name || "",
+          email: result.profile.email || "",
+          phone: result.profile.phone || "",
+          mobile: result.profile.mobile || "",
+          function: result.profile.function || "",
+          street: result.profile.street || "",
+          city: result.profile.city || "",
+          zip: result.profile.zip || "",
+          country_id: result.profile.country_id || null,
+        });
+      } else {
+        Alert.alert("Erreur", result.error || "Impossible de charger le profil");
+      }
+    } catch (error) {
+      Alert.alert("Erreur", "Une erreur s'est produite");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleChange = (field, value) => {
     setForm({ ...form, [field]: value });
   };
 
-  const handleSave = () => {
-    Alert.alert("Succès", "Votre profil a été mis à jour avec succès", [
-      { text: "OK", onPress: () => navigation.goBack() },
-    ]);
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      // TODO: Implement profile update API call
+      Alert.alert("Succès", "Votre profil a été mis à jour avec succès", [
+        { text: "OK", onPress: () => navigation.goBack() },
+      ]);
+    } catch (error) {
+      Alert.alert("Erreur", "Impossible de mettre à jour le profil");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handlePhotoChange = () => {
@@ -46,6 +89,15 @@ export default function EditProfile() {
       { text: "Annuler", style: "cancel" },
     ]);
   };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color="#990000" />
+        <Text style={styles.loadingText}>Chargement...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -60,8 +112,12 @@ export default function EditProfile() {
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Modifier le profil</Text>
-        <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
-          <Text style={styles.saveButtonText}>Enregistrer</Text>
+        <TouchableOpacity onPress={handleSave} style={styles.saveButton} disabled={saving}>
+          {saving ? (
+            <ActivityIndicator size="small" color="#990000" />
+          ) : (
+            <Text style={styles.saveButtonText}>Enregistrer</Text>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -71,7 +127,9 @@ export default function EditProfile() {
           <View style={styles.avatarContainer}>
             <Image
               source={{
-                uri: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
+                uri: profile?.image_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                  profile?.name || "User"
+                )}&size=150&background=990000&color=fff`,
               }}
               style={styles.profileImage}
             />
@@ -90,7 +148,7 @@ export default function EditProfile() {
           <Text style={styles.sectionTitle}>INFORMATIONS PERSONNELLES</Text>
 
           <View style={styles.formGroup}>
-            <Text style={styles.label}>Prénom</Text>
+            <Text style={styles.label}>Nom complet</Text>
             <View style={styles.inputContainer}>
               <Ionicons
                 name="person-outline"
@@ -99,28 +157,10 @@ export default function EditProfile() {
                 style={styles.inputIcon}
               />
               <TextInput
-                value={form.prenom}
-                onChangeText={(value) => handleChange("prenom", value)}
+                value={form.name}
+                onChangeText={(value) => handleChange("name", value)}
                 style={styles.input}
-                placeholder="Entrez votre prénom"
-              />
-            </View>
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Nom</Text>
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="person-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                value={form.nom}
-                onChangeText={(value) => handleChange("nom", value)}
-                style={styles.input}
-                placeholder="Entrez votre nom"
+                placeholder="Entrez votre nom complet"
               />
             </View>
           </View>
@@ -155,10 +195,29 @@ export default function EditProfile() {
                 style={styles.inputIcon}
               />
               <TextInput
-                value={form.telephone}
-                onChangeText={(value) => handleChange("telephone", value)}
+                value={form.phone}
+                onChangeText={(value) => handleChange("phone", value)}
                 style={styles.input}
                 placeholder="Entrez votre téléphone"
+                keyboardType="phone-pad"
+              />
+            </View>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Mobile</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons
+                name="phone-portrait-outline"
+                size={20}
+                color="#999"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                value={form.mobile}
+                onChangeText={(value) => handleChange("mobile", value)}
+                style={styles.input}
+                placeholder="Entrez votre mobile"
                 keyboardType="phone-pad"
               />
             </View>
@@ -170,7 +229,7 @@ export default function EditProfile() {
           <Text style={styles.sectionTitle}>INFORMATIONS PROFESSIONNELLES</Text>
 
           <View style={styles.formGroup}>
-            <Text style={styles.label}>Poste</Text>
+            <Text style={styles.label}>Fonction</Text>
             <View style={styles.inputContainer}>
               <Ionicons
                 name="briefcase-outline"
@@ -179,28 +238,10 @@ export default function EditProfile() {
                 style={styles.inputIcon}
               />
               <TextInput
-                value={form.poste}
-                onChangeText={(value) => handleChange("poste", value)}
+                value={form.function}
+                onChangeText={(value) => handleChange("function", value)}
                 style={styles.input}
-                placeholder="Entrez votre poste"
-              />
-            </View>
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Département</Text>
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="business-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                value={form.departement}
-                onChangeText={(value) => handleChange("departement", value)}
-                style={styles.input}
-                placeholder="Entrez votre département"
+                placeholder="Entrez votre fonction"
               />
             </View>
           </View>
@@ -220,10 +261,28 @@ export default function EditProfile() {
                 style={styles.inputIcon}
               />
               <TextInput
-                value={form.adresse}
-                onChangeText={(value) => handleChange("adresse", value)}
+                value={form.street}
+                onChangeText={(value) => handleChange("street", value)}
                 style={styles.input}
                 placeholder="Entrez votre adresse"
+              />
+            </View>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Code postal</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons
+                name="mail-outline"
+                size={20}
+                color="#999"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                value={form.zip}
+                onChangeText={(value) => handleChange("zip", value)}
+                style={styles.input}
+                placeholder="Code postal"
               />
             </View>
           </View>
@@ -232,75 +291,20 @@ export default function EditProfile() {
             <Text style={styles.label}>Ville</Text>
             <View style={styles.inputContainer}>
               <Ionicons
-                name="location-outline"
+                name="business-outline"
                 size={20}
                 color="#999"
                 style={styles.inputIcon}
               />
               <TextInput
-                value={form.ville}
-                onChangeText={(value) => handleChange("ville", value)}
+                value={form.city}
+                onChangeText={(value) => handleChange("city", value)}
                 style={styles.input}
                 placeholder="Entrez votre ville"
               />
             </View>
           </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Pays</Text>
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="globe-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                value={form.pays}
-                onChangeText={(value) => handleChange("pays", value)}
-                style={styles.input}
-                placeholder="Entrez votre pays"
-              />
-            </View>
-          </View>
         </View>
-
-        {/* Bio */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>BIOGRAPHIE</Text>
-
-          <View style={styles.formGroup}>
-            <View style={[styles.inputContainer, styles.textareaContainer]}>
-              <TextInput
-                value={form.bio}
-                onChangeText={(value) => handleChange("bio", value)}
-                style={[styles.input, styles.textarea]}
-                placeholder="Parlez-nous de vous..."
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-              />
-            </View>
-          </View>
-        </View>
-
-        {/* Bouton supprimer le compte */}
-        <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={() =>
-            Alert.alert(
-              "Supprimer le compte",
-              "Cette action est irréversible. Êtes-vous sûr ?",
-              [
-                { text: "Annuler", style: "cancel" },
-                { text: "Supprimer", style: "destructive" },
-              ]
-            )
-          }
-        >
-          <Ionicons name="trash-outline" size={20} color="#E74C3C" />
-          <Text style={styles.deleteButtonText}>Supprimer mon compte</Text>
-        </TouchableOpacity>
 
         <View style={styles.bottomSpace} />
       </ScrollView>
@@ -312,6 +316,15 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#F8F9FA",
+  },
+  centerContent: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: "#666",
   },
   header: {
     flexDirection: "row",
