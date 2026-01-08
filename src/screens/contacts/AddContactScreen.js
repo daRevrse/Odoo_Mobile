@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,8 +7,12 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import api from "../../services/api";
+import Dropdown from "../../components/Dropdown";
+import referenceDataService from "../../services/referenceDataService";
 
 export default function AddContactScreen({ route, navigation }) {
   const { contact } = route.params || {};
@@ -17,44 +21,132 @@ export default function AddContactScreen({ route, navigation }) {
   const [form, setForm] = useState({
     name: contact?.name || "",
     email: contact?.email || "",
-    telephone: contact?.telephone || "",
+    phone: contact?.phone || "",
+    mobile: contact?.mobile || "",
     entreprise: contact?.entreprise || "",
     type: contact?.type || "Client",
     poste: contact?.poste || "",
     adresse: contact?.adresse || "",
     ville: contact?.ville || "",
     codePostal: contact?.codePostal || "",
-    pays: contact?.pays || "Togo",
+    pays: contact?.pays || "",
+    paysId: contact?.country_id || null,
     site: contact?.site || "",
     notes: contact?.notes || "",
   });
 
+  const [isLoading, setIsLoading] = useState(false);
+  const [countries, setCountries] = useState([]);
+  const [loadingCountries, setLoadingCountries] = useState(true);
+
   const contactTypes = ["Client", "Fournisseur", "Partenaire", "Autre"];
+
+  // Charger les pays au montage du composant
+  useEffect(() => {
+    loadCountries();
+  }, []);
+
+  const loadCountries = async () => {
+    try {
+      setLoadingCountries(true);
+      const countriesData = await referenceDataService.getCountries();
+      setCountries(countriesData);
+      setLoadingCountries(false);
+    } catch (error) {
+      console.error("❌ Erreur lors du chargement des pays:", error);
+      setLoadingCountries(false);
+      Alert.alert(
+        "Erreur",
+        "Impossible de charger la liste des pays. Veuillez réessayer."
+      );
+    }
+  };
 
   const handleChange = (field, value) => {
     setForm({ ...form, [field]: value });
   };
 
-  const handleSave = () => {
+  const handleCountrySelect = (country) => {
+    setForm({
+      ...form,
+      pays: country.name,
+      paysId: country.id,
+    });
+  };
+
+  const handleSave = async () => {
     // Validation
     if (!form.name.trim()) {
       Alert.alert("Erreur", "Le nom est obligatoire");
       return;
     }
-    if (!form.email.trim() && !form.telephone.trim()) {
+    if (!form.email.trim() && !form.phone.trim() && !form.mobile.trim()) {
       Alert.alert(
         "Erreur",
-        "Veuillez fournir au moins un email ou un téléphone"
+        "Veuillez fournir au moins un email, un téléphone ou un mobile"
       );
       return;
     }
 
-    // Sauvegarde
-    Alert.alert(
-      "Succès",
-      isEdit ? "Contact modifié avec succès" : "Contact créé avec succès",
-      [{ text: "OK", onPress: () => navigation.goBack() }]
-    );
+    setIsLoading(true);
+
+    try {
+      // Préparer les données pour l'API Odoo
+      const contactData = {
+        name: form.name.trim(),
+        email: form.email.trim() || false,
+        phone: form.phone.trim() || false,
+        mobile: form.mobile.trim() || false,
+        street: form.adresse.trim() || false,
+        city: form.ville.trim() || false,
+        zip: form.codePostal.trim() || false,
+        function: form.poste.trim() || false,
+        comment: form.notes.trim() || false,
+        website: form.site.trim() || false,
+        company_type: "person",
+        is_company: false,
+      };
+
+      // Ajouter le country_id si un pays a été sélectionné
+      if (form.paysId) {
+        contactData.country_id = form.paysId;
+      }
+
+      // TODO: Gérer parent_id si le contact appartient à une entreprise
+      // Si form.entreprise est renseigné, il faudrait rechercher l'ID de cette entreprise
+      // ou permettre à l'utilisateur de sélectionner une entreprise existante
+
+      console.log("📤 Envoi des données contact:", contactData);
+
+      // Appel API
+      const response = await api.post("/res.partner", contactData);
+
+      console.log("✅ Contact créé/modifié:", response.data);
+
+      setIsLoading(false);
+
+      Alert.alert(
+        "Succès",
+        isEdit ? "Contact modifié avec succès" : "Contact créé avec succès",
+        [
+          {
+            text: "OK",
+            onPress: () => navigation.goBack(),
+          },
+        ]
+      );
+    } catch (error) {
+      setIsLoading(false);
+
+      console.error("❌ Erreur lors de la sauvegarde du contact:", error);
+
+      Alert.alert(
+        "Erreur",
+        error.userMessage ||
+          error.response?.data?.message ||
+          "Une erreur est survenue lors de la sauvegarde du contact"
+      );
+    }
   };
 
   const handlePhotoChange = () => {
@@ -69,14 +161,18 @@ export default function AddContactScreen({ route, navigation }) {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#333" />
+        <TouchableOpacity onPress={() => navigation.goBack()} disabled={isLoading}>
+          <Ionicons name="arrow-back" size={24} color={isLoading ? "#ccc" : "#333"} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
           {isEdit ? "Modifier le contact" : "Nouveau contact"}
         </Text>
-        <TouchableOpacity onPress={handleSave}>
-          <Text style={styles.saveText}>Enregistrer</Text>
+        <TouchableOpacity onPress={handleSave} disabled={isLoading}>
+          {isLoading ? (
+            <ActivityIndicator color="#990000" />
+          ) : (
+            <Text style={styles.saveText}>Enregistrer</Text>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -184,7 +280,7 @@ export default function AddContactScreen({ route, navigation }) {
           <Text style={styles.sectionTitle}>CONTACT</Text>
 
           <View style={styles.formGroup}>
-            <Text style={styles.label}>Téléphone</Text>
+            <Text style={styles.label}>Téléphone fixe</Text>
             <View style={styles.inputContainer}>
               <Ionicons
                 name="call-outline"
@@ -193,10 +289,29 @@ export default function AddContactScreen({ route, navigation }) {
                 style={styles.inputIcon}
               />
               <TextInput
-                value={form.telephone}
-                onChangeText={(value) => handleChange("telephone", value)}
+                value={form.phone}
+                onChangeText={(value) => handleChange("phone", value)}
                 style={styles.input}
-                placeholder="+228 90 00 00 00"
+                placeholder="+225 27 00 00 00"
+                keyboardType="phone-pad"
+              />
+            </View>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Mobile</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons
+                name="phone-portrait-outline"
+                size={20}
+                color="#999"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                value={form.mobile}
+                onChangeText={(value) => handleChange("mobile", value)}
+                style={styles.input}
+                placeholder="+225 05 00 00 00"
                 keyboardType="phone-pad"
               />
             </View>
@@ -292,23 +407,27 @@ export default function AddContactScreen({ route, navigation }) {
             </View>
           </View>
 
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Pays</Text>
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="flag-outline"
-                size={20}
-                color="#999"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                value={form.pays}
-                onChangeText={(value) => handleChange("pays", value)}
-                style={styles.input}
-                placeholder="Togo"
-              />
+          {loadingCountries ? (
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Pays</Text>
+              <View style={styles.inputContainer}>
+                <ActivityIndicator color="#990000" />
+                <Text style={[styles.input, { color: "#999" }]}>
+                  Chargement des pays...
+                </Text>
+              </View>
             </View>
-          </View>
+          ) : (
+            <Dropdown
+              label="Pays"
+              placeholder="Sélectionner un pays"
+              value={form.pays}
+              items={countries}
+              onSelect={handleCountrySelect}
+              iconName="flag-outline"
+              searchable={true}
+            />
+          )}
         </View>
 
         {/* Notes */}

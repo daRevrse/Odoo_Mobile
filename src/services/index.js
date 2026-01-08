@@ -12,12 +12,14 @@ import api, {
 import authService from "./authService";
 import contactService from "./contactService";
 import languageService from "./languageService";
+import configService from "./configService";
 
 export {
   api,
   authService,
   contactService,
   languageService,
+  configService,
   isAuthenticated,
   setAuthToken,
   logout,

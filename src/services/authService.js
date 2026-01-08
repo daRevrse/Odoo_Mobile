@@ -3,8 +3,8 @@ import api, {
   setAuthToken,
   logout as apiLogout,
   STORAGE_KEYS,
-  ODOO_BASE_URL,
 } from "./api";
+import apiConfigService from "./apiConfigService";
 
 /**
  * Service d'authentification pour l'application Odoo Mobile
@@ -19,6 +19,18 @@ class AuthService {
    */
   async login(db, login, password) {
     try {
+      console.log("🔐 === DÉBUT LOGIN ===");
+      console.log("🔐 Database:", db);
+      console.log("🔐 Login:", login);
+
+      // Récupérer l'URL dynamique depuis le service
+      const odooUrl = await apiConfigService.getApiUrl();
+      console.log("🔐 ODOO_BASE_URL (dynamique):", odooUrl);
+
+      if (!odooUrl) {
+        throw new Error("URL du serveur non configurée");
+      }
+
       // Validation des param�tres
       if (!db || !login || !password) {
         throw new Error(
@@ -26,10 +38,15 @@ class AuthService {
         );
       }
 
+      const authUrl = "/web/session/authenticate";
+      console.log("📤 Auth endpoint:", authUrl);
+      console.log("📤 Base URL utilisée:", odooUrl);
+      console.log("📤 URL complète:", `${odooUrl}${authUrl}`);
+
       // Appel API de connexion sur /web/session/authenticate
       // Utilisation de l'instance api pour b�n�ficier des intercepteurs
       const response = await api.post(
-        "/web/session/authenticate",
+        authUrl,
         {
           jsonrpc: "2.0",
           params: {
@@ -39,24 +56,35 @@ class AuthService {
           },
         },
         {
-          baseURL: ODOO_BASE_URL,
+          baseURL: odooUrl,
           headers: {
             "Content-Type": "application/json",
           },
         }
       );
 
+      console.log("📥 Login response status:", response.status);
+      console.log("📥 Login response data keys:", Object.keys(response.data || {}));
+
       const { data } = response;
 
       // V�rifier que la r�ponse contient les donn�es n�cessaires
       if (!data || !data.result) {
+        console.error("❌ Réponse invalide:", data);
         throw new Error("R�ponse invalide du serveur");
       }
 
       const result = data.result;
+      console.log("✅ Login result:", {
+        hasUid: !!result.uid,
+        hasUsername: !!result.username,
+        hasName: !!result.name,
+        hasSessionId: !!result.session_id,
+      });
 
       // V�rifier que l'authentification a r�ussi
       if (!result.uid) {
+        console.error("❌ Pas d'UID dans la réponse");
         throw new Error("Authentification �chou�e");
       }
 
@@ -82,14 +110,18 @@ class AuthService {
       );
       await AsyncStorage.setItem(STORAGE_KEYS.DATABASE, db);
 
-      console.log("Connexion r�ussie pour:", login);
+      console.log("✅ Connexion réussie pour:", login);
+      console.log("✅ User data sauvegardé:", { uid, name, db });
 
       return {
         success: true,
         user: userData,
       };
     } catch (error) {
-      console.error("Erreur lors de la connexion:", error);
+      console.error("❌ === ERREUR LOGIN ===");
+      console.error("❌ Error message:", error.message);
+      console.error("❌ Error response:", error.response?.data);
+      console.error("❌ Error status:", error.response?.status);
 
       // Gestion des erreurs sp�cifiques
       let errorMessage = "Erreur de connexion";

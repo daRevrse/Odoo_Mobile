@@ -12,7 +12,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import { Ionicons } from "@expo/vector-icons";
-import { ODOO_BASE_URL } from "../../services/api";
+import apiConfigService from "../../services/apiConfigService";
 
 const STORAGE_KEY = "SELECTED_DATABASE";
 
@@ -42,10 +42,25 @@ export default function DatabaseSelectionScreen({ navigation }) {
   const fetchDatabases = async () => {
     try {
       setFetchingDatabases(true);
-      console.log("Récupération des bases de données depuis Odoo...");
+      console.log("🗄️ === RÉCUPÉRATION DES BASES DE DONNÉES ===");
+
+      // Récupérer l'URL dynamique depuis le service
+      const odooUrl = await apiConfigService.getApiUrl();
+      console.log("🌐 URL configurée:", odooUrl);
+
+      if (!odooUrl) {
+        console.error("❌ URL du serveur non configurée");
+        // Rediriger vers ServerConfig sans afficher d'alerte (comportement attendu après reset)
+        navigation.replace("ServerConfig");
+        return;
+      }
+
+      const requestUrl = `${odooUrl}/web/database/list`;
+      console.log("📤 Request URL:", requestUrl);
+      console.log("📤 Envoi de la requête...");
 
       const response = await axios.post(
-        `${ODOO_BASE_URL}/web/database/list`,
+        requestUrl,
         {
           jsonrpc: "2.0",
         },
@@ -57,6 +72,9 @@ export default function DatabaseSelectionScreen({ navigation }) {
         }
       );
 
+      console.log("📥 Response status:", response.status);
+      console.log("📥 Response data:", response.data);
+
       const { data } = response;
 
       if (data && data.result && Array.isArray(data.result)) {
@@ -67,16 +85,19 @@ export default function DatabaseSelectionScreen({ navigation }) {
         }));
 
         setDatabases(dbList);
-        console.log(`${dbList.length} base(s) de données récupérée(s)`);
+        console.log(`✅ ${dbList.length} base(s) de données récupérée(s):`, dbList.map(db => db.name));
       } else {
-        console.warn("Format de réponse inattendu:", data);
+        console.error("❌ Format de réponse inattendu:", data);
         Alert.alert(
           "Erreur",
           "Impossible de récupérer la liste des bases de données"
         );
       }
     } catch (error) {
-      console.error("Erreur lors de la récupération des bases:", error);
+      console.error("❌ === ERREUR RÉCUPÉRATION BASES ===");
+      console.error("❌ Error message:", error.message);
+      console.error("❌ Error response:", error.response?.data);
+      console.error("❌ Error status:", error.response?.status);
       Alert.alert(
         "Erreur de connexion",
         "Impossible de récupérer les bases de données. Vérifiez votre connexion."
@@ -166,10 +187,7 @@ export default function DatabaseSelectionScreen({ navigation }) {
         <View style={styles.emptyContainer}>
           <Ionicons name="server-outline" size={80} color="#ccc" />
           <Text style={styles.emptyText}>Aucune base de données trouvée</Text>
-          <TouchableOpacity
-            style={styles.retryButton}
-            onPress={fetchDatabases}
-          >
+          <TouchableOpacity style={styles.retryButton} onPress={fetchDatabases}>
             <Ionicons name="refresh" size={20} color="#fff" />
             <Text style={styles.retryButtonText}>Réessayer</Text>
           </TouchableOpacity>
@@ -187,7 +205,11 @@ export default function DatabaseSelectionScreen({ navigation }) {
 
           {/* Information */}
           <View style={styles.infoBox}>
-            <Ionicons name="information-circle-outline" size={20} color="#666" />
+            <Ionicons
+              name="information-circle-outline"
+              size={20}
+              color="#666"
+            />
             <Text style={styles.infoText}>
               Sélectionnez une base de données pour vous connecter
             </Text>

@@ -1,9 +1,31 @@
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import apiConfigService from "./apiConfigService";
 
-// Configuration de l'API
-export const API_BASE_URL = "http://161.97.125.198:11077/bs_mobile_api";
-export const ODOO_BASE_URL = "http://161.97.125.198:11077";
+// ✅ MODIFICATION : URL dynamique au lieu d'URL fixe
+let API_BASE_URL = "";
+let ODOO_BASE_URL = "";
+
+// Initialiser les URLs depuis le stockage
+const initializeApiUrls = async () => {
+  const storedUrl = await apiConfigService.getApiUrl();
+
+  if (storedUrl) {
+    ODOO_BASE_URL = storedUrl;
+    API_BASE_URL = `${storedUrl}/bs_mobile_api`;
+    console.log("📡 API URL initialisée:", ODOO_BASE_URL);
+  }
+};
+
+// Initialiser au chargement du module
+initializeApiUrls();
+
+// Export des URLs (avec getters pour toujours avoir la valeur actuelle)
+export const getApiBaseUrl = () => API_BASE_URL;
+export const getOdooBaseUrl = () => ODOO_BASE_URL;
+
+// Pour la compatibilité avec le code existant
+export { API_BASE_URL, ODOO_BASE_URL };
 
 // Clés de stockage
 export const STORAGE_KEYS = {
@@ -16,20 +38,44 @@ export const STORAGE_KEYS = {
 // Store pour les cookies de session
 let sessionCookies = "";
 
-// Création de l'instance Axios avec support des cookies
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 30000,
-  headers: {
-    "Content-Type": "application/json",
-  },
-  withCredentials: true, // On gère manuellement les cookies pour React Native
-});
+// ✅ MODIFICATION : Créer l'instance Axios avec URL dynamique
+const createApiInstance = () => {
+  return axios.create({
+    baseURL: API_BASE_URL || undefined, // Ne pas définir de baseURL par défaut
+    timeout: 30000,
+    headers: {
+      "Content-Type": "application/json",
+    },
+    withCredentials: true,
+  });
+};
+
+let api = createApiInstance();
+
+// ✅ NOUVEAU : Fonction pour mettre à jour l'API instance avec nouvelle URL
+export const updateApiUrls = async () => {
+  await initializeApiUrls();
+  api = createApiInstance();
+  console.log("🔄 Instance API mise à jour avec nouvelle URL");
+};
 
 // Intercepteur de requête pour ajouter le token d'authentification et les cookies
 api.interceptors.request.use(
   async (config) => {
     try {
+      // ✅ MODIFICATION : Récupérer l'URL actuelle avant chaque requête
+      const currentUrl = await apiConfigService.getApiUrl();
+
+      // Si pas de baseURL dans la config OU si c'est localhost, utiliser l'URL dynamique
+      if (!config.baseURL || config.baseURL.includes('localhost')) {
+        if (currentUrl) {
+          config.baseURL = `${currentUrl}/bs_mobile_api`;
+          console.log("🔄 BaseURL dynamique appliquée:", config.baseURL);
+        } else {
+          console.error("❌ URL API non configurée - la requête risque d'échouer");
+        }
+      }
+
       // Récupérer le token depuis AsyncStorage
       const token = await AsyncStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
 
@@ -42,13 +88,28 @@ api.interceptors.request.use(
         config.headers.Cookie = sessionCookies;
       }
 
+      // 📝 LOG: Détails de la requête
+      console.log("📤 API REQUEST:", {
+        method: config.method?.toUpperCase(),
+        baseURL: config.baseURL,
+        url: config.url,
+        fullURL: config.baseURL ? `${config.baseURL}${config.url}` : config.url,
+        hasToken: !!token,
+        hasCookies: !!sessionCookies,
+        headers: {
+          Authorization: config.headers.Authorization ? "Bearer ***" : "None",
+          Cookie: sessionCookies ? sessionCookies.substring(0, 50) + "..." : "None",
+        },
+      });
+
       return config;
     } catch (error) {
-      console.error("Erreur lors de la configuration de la requête:", error);
+      console.error("❌ Erreur lors de la configuration de la requête:", error);
       return config;
     }
   },
   (error) => {
+    console.error("❌ Erreur intercepteur request:", error);
     return Promise.reject(error);
   }
 );
@@ -56,6 +117,15 @@ api.interceptors.request.use(
 // Intercepteur de réponse pour gérer les erreurs et capturer les cookies
 api.interceptors.response.use(
   (response) => {
+    // 📝 LOG: Réponse reçue
+    console.log("📥 API RESPONSE:", {
+      status: response.status,
+      statusText: response.statusText,
+      url: response.config?.url,
+      hasData: !!response.data,
+      dataKeys: response.data ? Object.keys(response.data) : [],
+    });
+
     // Capturer les cookies de la réponse
     const setCookieHeader = response.headers["set-cookie"];
     if (setCookieHeader) {
@@ -72,13 +142,23 @@ api.interceptors.response.use(
       });
 
       sessionCookies = cookieStrings.join("; ");
-      console.log("Cookies de session capturés et stockés automatiquement");
+      console.log("🍪 Cookies de session capturés:", sessionCookies.substring(0, 100) + "...");
     }
 
     return response;
   },
   async (error) => {
     const originalRequest = error.config;
+
+    // 📝 LOG: Erreur de réponse
+    console.error("❌ API ERROR:", {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      url: originalRequest?.url,
+      baseURL: originalRequest?.baseURL,
+      message: error.message,
+      responseData: error.response?.data,
+    });
 
     // Gestion de l'erreur 401 (Non authentifié)
     if (error.response && error.response.status === 401) {
@@ -151,13 +231,13 @@ api.interceptors.response.use(
       }
     } else if (error.request) {
       // La requête a été envoyée mais aucune réponse n'a été reçue
-      console.error("Erreur réseau:", error.message);
+      console.error("Pas de réponse du serveur:", error.request);
       error.userMessage =
         "Impossible de se connecter au serveur. Vérifiez votre connexion internet.";
     } else {
       // Erreur lors de la configuration de la requête
-      console.error("Erreur:", error.message);
-      error.userMessage = "Une erreur inattendue est survenue.";
+      console.error("Erreur de configuration:", error.message);
+      error.userMessage = "Une erreur est survenue lors de la requête.";
     }
 
     return Promise.reject(error);
@@ -167,7 +247,7 @@ api.interceptors.response.use(
 // Fonction pour gérer la déconnexion
 const handleLogout = async () => {
   try {
-    // Supprimer les tokens et les données utilisateur
+    // Supprimer toutes les données d'authentification
     await AsyncStorage.multiRemove([
       STORAGE_KEYS.AUTH_TOKEN,
       STORAGE_KEYS.REFRESH_TOKEN,
@@ -175,18 +255,16 @@ const handleLogout = async () => {
       STORAGE_KEYS.DATABASE,
     ]);
 
-    // Nettoyer les cookies de session
+    // Effacer les cookies de session
     sessionCookies = "";
 
-    // Note: La navigation vers l'écran de connexion devra être gérée
-    // depuis les composants React Native en écoutant les changements d'état
-    console.log("Utilisateur déconnecté");
+    console.log("Déconnexion effectuée, données nettoyées");
   } catch (error) {
     console.error("Erreur lors de la déconnexion:", error);
   }
 };
 
-// Fonction utilitaire pour vérifier si l'utilisateur est authentifié
+// Fonction pour vérifier si l'utilisateur est authentifié
 export const isAuthenticated = async () => {
   try {
     const token = await AsyncStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
@@ -227,14 +305,25 @@ export const clearSessionCookies = () => {
   console.log("Cookies de session effacés");
 };
 
-// Fonction pour initialiser la session en récupérant le cookie depuis Odoo
+// ✅ MODIFICATION : Fonction pour initialiser la session avec URL dynamique
 export const initializeSession = async () => {
   try {
-    console.log("Initialisation de la session Odoo...");
+    const currentUrl = await apiConfigService.getApiUrl();
+
+    if (!currentUrl) {
+      console.error("❌ URL API non configurée");
+      throw new Error("URL API non configurée");
+    }
+
+    console.log("🔐 Initialisation de la session Odoo...");
+    console.log("🌐 URL:", currentUrl);
+
+    const requestUrl = `${currentUrl}/web/database/list`;
+    console.log("📤 Request URL:", requestUrl);
 
     // Appel POST sur /web/database/list pour obtenir le cookie de session
     const response = await axios.post(
-      `${ODOO_BASE_URL}/web/database/list`,
+      requestUrl,
       {
         jsonrpc: "2.0",
       },
@@ -246,6 +335,12 @@ export const initializeSession = async () => {
         validateStatus: (status) => status >= 200 && status < 500,
       }
     );
+
+    console.log("📥 Session init response:", {
+      status: response.status,
+      statusText: response.statusText,
+      hasSetCookie: !!response.headers["set-cookie"],
+    });
 
     // Capturer les cookies de la réponse
     const setCookieHeader = response.headers["set-cookie"];

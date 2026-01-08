@@ -8,6 +8,9 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -67,13 +70,9 @@ export default function LoginScreen({ navigation, route }) {
       const result = await authService.login(db, login, password);
 
       if (result.success) {
-        // Connexion réussie
-        Alert.alert("Succès", "Connexion réussie", [
-          {
-            text: "OK",
-            onPress: () => navigation.replace("Home"),
-          },
-        ]);
+        // ✅ MODIFICATION : Rediriger vers ConfigLoadingScreen au lieu de Home
+        console.log("✅ Connexion réussie, chargement de la configuration...");
+        navigation.replace("ConfigLoading");
       } else {
         // Erreur de connexion
         Alert.alert("Erreur", result.error || "Échec de la connexion");
@@ -86,107 +85,116 @@ export default function LoginScreen({ navigation, route }) {
   };
 
   return (
-    <View style={styles.container}>
-      <Image
-        source={require("./../../../src/assets/logo.png")}
-        style={styles.logo}
-      />
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+    >
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <Image source={require("./../../assets/logo.png")} style={styles.logo} />
 
-      {/* Affichage de la base de données sélectionnée */}
-      <View style={styles.databaseInfo}>
-        <View style={styles.databaseLabel}>
-          <Ionicons name="server-outline" size={20} color="#990000" />
-          <Text style={styles.databaseText}>{db}</Text>
+        {/* Affichage de la base de données sélectionnée */}
+        <View style={styles.databaseInfo}>
+          <View style={styles.databaseLabel}>
+            <Ionicons name="server-outline" size={16} color="#990000" />
+            <Text style={styles.databaseText}>{db || "Aucune base"}</Text>
+          </View>
+          <TouchableOpacity onPress={handleChangeDatabase}>
+            <Text style={styles.changeDbText}>Changer</Text>
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity onPress={handleChangeDatabase}>
-          <Text style={styles.changeText}>Changer</Text>
-        </TouchableOpacity>
-      </View>
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Login</Text>
-        <View style={styles.inputContainer}>
-          <TextInput
-            placeholder="Identifiant"
-            style={styles.input}
-            value={login}
-            onChangeText={setLogin}
-            autoCapitalize="none"
-            editable={!loading}
-          />
-          <Ionicons
-            name="person-outline"
-            size={20}
-            color="#555"
-            style={styles.icon}
-          />
-        </View>
-      </View>
+        <Text style={styles.title}>Connexion</Text>
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Mot de passe</Text>
-        <View style={styles.inputContainer}>
+        <TextInput
+          placeholder="Nom d'utilisateur"
+          style={styles.input}
+          value={login}
+          onChangeText={setLogin}
+          autoCapitalize="none"
+        />
+
+        <View style={styles.passwordContainer}>
           <TextInput
             placeholder="Mot de passe"
-            style={styles.input}
+            style={styles.passwordInput}
             value={password}
             onChangeText={setPassword}
             secureTextEntry={!showPassword}
-            editable={!loading}
           />
           <TouchableOpacity
             onPress={() => setShowPassword(!showPassword)}
-            disabled={loading}
+            style={styles.eyeIcon}
           >
             <Ionicons
               name={showPassword ? "eye-outline" : "eye-off-outline"}
-              size={20}
-              color="#555"
-              style={styles.icon}
+              size={24}
+              color="#999"
             />
           </TouchableOpacity>
         </View>
-      </View>
 
-      <Text style={styles.forgot}>Mot de passe oublié?</Text>
+        <TouchableOpacity
+          style={styles.forgotPassword}
+          onPress={() => navigation.navigate("ForgotPassword")}
+        >
+          <Text style={styles.forgotPasswordText}>Mot de passe oublié ?</Text>
+        </TouchableOpacity>
 
-      <TouchableOpacity
-        style={[styles.button, loading && styles.buttonDisabled]}
-        onPress={handleLogin}
-        disabled={loading}
-      >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Connexion</Text>
-        )}
-      </TouchableOpacity>
-    </View>
+        <TouchableOpacity
+          style={[styles.button, loading && styles.buttonDisabled]}
+          onPress={handleLogin}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Se connecter</Text>
+          )}
+        </TouchableOpacity>
+
+        {/* <View style={styles.registerContainer}>
+          <Text style={styles.registerText}>Pas encore de compte ? </Text>
+          <TouchableOpacity onPress={() => navigation.navigate("Register")}>
+            <Text style={styles.registerLink}>Créer un compte</Text>
+          </TouchableOpacity>
+        </View> */}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
+    backgroundColor: "#F8F9FA",
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: "center",
-    backgroundColor: "#fff",
+    padding: 20,
   },
   logo: {
     width: 280,
     height: 90,
-    resizeMode: "contain",
     alignSelf: "center",
     marginBottom: 30,
+    resizeMode: "contain",
   },
   databaseInfo: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#f8f9fa",
+    backgroundColor: "#fff",
     padding: 12,
     borderRadius: 10,
-    marginBottom: 24,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#E8E8E8",
   },
   databaseLabel: {
     flexDirection: "row",
@@ -194,68 +202,82 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   databaseText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#333",
-  },
-  changeText: {
-    fontSize: 14,
-    color: "#990000",
-    fontWeight: "600",
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    marginBottom: 6,
     fontSize: 14,
     color: "#333",
     fontWeight: "500",
   },
-  inputContainer: {
-    backgroundColor: "#f5f5f5",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    height: 48,
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
+  changeDbText: {
+    fontSize: 14,
+    color: "#990000",
+    fontWeight: "600",
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 30,
+    textAlign: "center",
   },
   input: {
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 15,
+    marginBottom: 15,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: "#E8E8E8",
+  },
+  passwordContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#E8E8E8",
+  },
+  passwordInput: {
     flex: 1,
-    fontSize: 15,
-    paddingVertical: 8,
-    color: "#333",
+    padding: 15,
+    fontSize: 16,
   },
-  icon: {
-    marginLeft: 8,
+  eyeIcon: {
+    padding: 15,
   },
-  forgot: {
-    textAlign: "right",
-    color: "#999",
-    fontSize: 13,
-    marginBottom: 24,
-    marginTop: 4,
+  forgotPassword: {
+    alignSelf: "flex-end",
+    marginBottom: 25,
+  },
+  forgotPasswordText: {
+    color: "#990000",
+    fontSize: 14,
   },
   button: {
     backgroundColor: "#990000",
-    paddingVertical: 13,
     borderRadius: 10,
+    padding: 15,
     alignItems: "center",
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    marginBottom: 20,
   },
   buttonDisabled: {
-    backgroundColor: "#cc6666",
-    opacity: 0.7,
+    opacity: 0.6,
   },
   buttonText: {
     color: "#fff",
-    fontWeight: "600",
     fontSize: 16,
+    fontWeight: "bold",
+  },
+  registerContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+  },
+  registerText: {
+    color: "#666",
+    fontSize: 14,
+  },
+  registerLink: {
+    color: "#990000",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

@@ -10,8 +10,10 @@ import {
   Alert,
   ActivityIndicator,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
-import { authService } from "../../services";
+import { authService, configService } from "../../services";
+import { resetBranding } from "../../utils/branding";
 
 export default function ProfileScreen({ navigation }) {
   const [profile, setProfile] = useState(null);
@@ -46,6 +48,63 @@ export default function ProfileScreen({ navigation }) {
   const handleSecurityPress = () => navigation.navigate("Security");
   const handleNotificationsPress = () => navigation.navigate("Notifications");
   const handleTimeZonePress = () => navigation.navigate("FuseauHoraire");
+
+  const handleResetApp = async () => {
+    Alert.alert(
+      "Réinitialiser l'application",
+      "⚠️ ATTENTION : Cette action effacera TOUTES les données de l'application :\n\n• Configuration et paramètres\n• Cache et données locales\n• Branding personnalisé\n• Sessions et authentification\n\nVous devrez tout reconfigurer. Continuer ?",
+      [
+        {
+          text: "Annuler",
+          style: "cancel",
+        },
+        {
+          text: "Réinitialiser",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              // Afficher un indicateur de chargement
+              Alert.alert("Réinitialisation", "Effacement en cours...");
+
+              console.log("🗑️ Début de la réinitialisation complète...");
+
+              // 1. Effacer toutes les données AsyncStorage
+              await AsyncStorage.clear();
+              console.log("✅ AsyncStorage vidé");
+
+              // 2. Effacer la configuration
+              await configService.clearConfig();
+              console.log("✅ Configuration effacée");
+
+              // 3. Réinitialiser le branding
+              await resetBranding();
+              console.log("✅ Branding réinitialisé");
+
+              // 4. Déconnexion (nettoyage supplémentaire)
+              await authService.logout();
+              console.log("✅ Session déconnectée");
+
+              console.log("✅ Application réinitialisée avec succès");
+
+              // Rediriger vers l'écran de configuration du serveur (URL non configurée après reset)
+              setTimeout(() => {
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: "ServerConfig" }],
+                });
+              }, 500);
+            } catch (error) {
+              console.error("❌ Erreur lors de la réinitialisation:", error);
+              Alert.alert(
+                "Erreur",
+                "Une erreur s'est produite lors de la réinitialisation. Veuillez réessayer."
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleLogout = async () => {
     Alert.alert("Déconnexion", "Êtes-vous sûr de vouloir vous déconnecter ?", [
@@ -182,6 +241,17 @@ export default function ProfileScreen({ navigation }) {
           />
         </View>
 
+        {/* Section Avancé */}
+        <View style={styles.advancedSection}>
+          <Text style={styles.sectionTitle}>AVANCÉ</Text>
+          <MenuOption
+            icon="refresh-circle-outline"
+            title="Réinitialiser l'application"
+            onPress={handleResetApp}
+            isPage={true}
+          />
+        </View>
+
         {/* Bouton Déconnexion */}
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Text style={styles.logoutButtonText}>Déconnexion</Text>
@@ -286,6 +356,17 @@ const styles = StyleSheet.create({
   },
   menuSection: {
     marginTop: 24,
+  },
+  advancedSection: {
+    marginTop: 32,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#999",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    letterSpacing: 0.5,
   },
   menuOption: {
     flexDirection: "row",

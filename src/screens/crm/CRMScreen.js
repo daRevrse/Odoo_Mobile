@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,97 +6,68 @@ import {
   FlatList,
   TouchableOpacity,
   TextInput,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-
-const mockLeads = [
-  {
-    id: "1",
-    nom: "TechStart SARL",
-    contact: "Amadou Diallo",
-    telephone: "+228 90 11 22 33",
-    email: "contact@techstart.tg",
-    statut: "Qualifié",
-    valeur: "8 000 000 FCFA",
-    probabilite: 75,
-    prochainContact: "12/10/2025",
-    source: "Référence",
-  },
-  {
-    id: "2",
-    nom: "Commerce Plus",
-    contact: "Fatou Mensah",
-    telephone: "+228 90 22 33 44",
-    email: "info@commerceplus.tg",
-    statut: "Nouveau",
-    valeur: "12 000 000 FCFA",
-    probabilite: 30,
-    prochainContact: "10/10/2025",
-    source: "Site web",
-  },
-  {
-    id: "3",
-    nom: "Industrie Nord",
-    contact: "Koffi Assou",
-    telephone: "+228 90 33 44 55",
-    email: "k.assou@industrienord.tg",
-    statut: "Négociation",
-    valeur: "25 000 000 FCFA",
-    probabilite: 85,
-    prochainContact: "11/10/2025",
-    source: "Salon",
-  },
-  {
-    id: "4",
-    nom: "Services Express",
-    contact: "Ama Koffi",
-    telephone: "+228 90 44 55 66",
-    email: "contact@servicesexpress.tg",
-    statut: "Gagné",
-    valeur: "5 000 000 FCFA",
-    probabilite: 100,
-    prochainContact: "-",
-    source: "Publicité",
-  },
-  {
-    id: "5",
-    nom: "Distribution Plus",
-    contact: "Yao Mensah",
-    telephone: "+228 90 55 66 77",
-    email: "yao@distributionplus.tg",
-    statut: "Perdu",
-    valeur: "15 000 000 FCFA",
-    probabilite: 0,
-    prochainContact: "-",
-    source: "Email",
-  },
-];
+import crmService from "../../services/crmService";
 
 export default function CRMScreen({ navigation }) {
   const [searchActive, setSearchActive] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const [leads, setLeads] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const filteredLeads = mockLeads.filter(
-    (l) =>
-      l.nom.toLowerCase().includes(searchText.toLowerCase()) ||
-      l.contact.toLowerCase().includes(searchText.toLowerCase())
-  );
+  useEffect(() => {
+    loadLeads();
+  }, []);
 
-  const getStatutStyle = (statut) => {
-    switch (statut) {
-      case "Nouveau":
-        return styles.statutNouveau;
-      case "Qualifié":
-        return styles.statutQualifie;
-      case "Négociation":
-        return styles.statutNegociation;
-      case "Gagné":
-        return styles.statutGagne;
-      case "Perdu":
-        return styles.statutPerdu;
-      default:
-        return {};
+  const loadLeads = async () => {
+    try {
+      setLoading(true);
+      const data = await crmService.getLeads();
+      setLeads(data.leads);
+    } catch (error) {
+      console.error("Erreur lors du chargement des opportunités:", error);
+      Alert.alert("Erreur", "Impossible de charger la liste des opportunités");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadLeads();
+  };
+
+  const handleLeadPress = (lead) => {
+    navigation.navigate("CRMDetail", { leadId: lead.id });
+  };
+
+  const filteredLeads = crmService.searchLeads(searchText, leads);
+
+  const getStatutStyle = (stage) => {
+    const stageName = stage?.display_name?.toLowerCase() || "";
+
+    if (stageName.includes("nouveau") || stageName.includes("new")) {
+      return { bg: "#D6EAF8", text: stage.display_name };
+    }
+    if (stageName.includes("qualifi") || stageName.includes("qualified")) {
+      return { bg: "#FCF3CF", text: stage.display_name };
+    }
+    if (stageName.includes("proposition") || stageName.includes("proposal")) {
+      return { bg: "#FADBD8", text: stage.display_name };
+    }
+    if (stageName.includes("gagn") || stageName.includes("won")) {
+      return { bg: "#D5F4E6", text: stage.display_name };
+    }
+    if (stageName.includes("perdu") || stageName.includes("lost")) {
+      return { bg: "#EAECEE", text: stage.display_name };
+    }
+
+    return { bg: "#F0F0F0", text: stage?.display_name || "N/A" };
   };
 
   const getProbabiliteColor = (probabilite) => {
@@ -106,63 +77,94 @@ export default function CRMScreen({ navigation }) {
     return "#E74C3C";
   };
 
-  const renderItem = ({ item }) => (
-    <TouchableOpacity style={styles.card}>
-      <View style={styles.cardHeader}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.nom} numberOfLines={1}>
-            {item.nom}
-          </Text>
-          <Text style={styles.contact}>{item.contact}</Text>
-        </View>
-        <View style={[styles.statutBadge, getStatutStyle(item.statut)]}>
-          <Text style={styles.statutText}>{item.statut}</Text>
-        </View>
-      </View>
+  const formatCurrency = (value, currency) => {
+    if (!value) return "0";
+    const symbol = currency?.display_name || "XOF";
+    return `${value.toLocaleString()} ${symbol}`;
+  };
 
-      {/* Valeur et probabilité */}
-      <View style={styles.valeurContainer}>
-        <View style={styles.valeurRow}>
-          <Ionicons name="cash-outline" size={16} color="#990000" />
-          <Text style={styles.valeur}>{item.valeur}</Text>
-        </View>
-        <View style={styles.probabiliteContainer}>
-          <View
-            style={[
-              styles.probabiliteCircle,
-              { backgroundColor: getProbabiliteColor(item.probabilite) },
-            ]}
-          >
-            <Text style={styles.probabiliteText}>{item.probabilite}%</Text>
+  const renderItem = ({ item }) => {
+    const statut = getStatutStyle(item.stage_id);
+
+    return (
+      <TouchableOpacity style={styles.card} onPress={() => handleLeadPress(item)}>
+        <View style={styles.cardHeader}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.nom} numberOfLines={1}>
+              {item.name}
+            </Text>
+            <Text style={styles.contact}>
+              {item.partner_name || item.contact_name || "N/A"}
+            </Text>
+          </View>
+          <View style={[styles.statutBadge, { backgroundColor: statut.bg }]}>
+            <Text style={styles.statutText}>{statut.text}</Text>
           </View>
         </View>
-      </View>
 
-      {/* Informations de contact */}
-      <View style={styles.infoRow}>
-        <Ionicons name="call-outline" size={14} color="#666" />
-        <Text style={styles.infoText}>{item.telephone}</Text>
-      </View>
-      <View style={styles.infoRow}>
-        <Ionicons name="mail-outline" size={14} color="#666" />
-        <Text style={styles.infoText} numberOfLines={1}>
-          {item.email}
-        </Text>
-      </View>
+        {/* Valeur et probabilité */}
+        <View style={styles.valeurContainer}>
+          <View style={styles.valeurRow}>
+            <Ionicons name="cash-outline" size={16} color="#990000" />
+            <Text style={styles.valeur}>
+              {formatCurrency(item.expected_revenue, item.company_currency)}
+            </Text>
+          </View>
+          <View style={styles.probabiliteContainer}>
+            <View
+              style={[
+                styles.probabiliteCircle,
+                { backgroundColor: getProbabiliteColor(item.probability) },
+              ]}
+            >
+              <Text style={styles.probabiliteText}>{Math.round(item.probability)}%</Text>
+            </View>
+          </View>
+        </View>
 
-      {/* Footer */}
-      <View style={styles.cardFooter}>
-        <View style={styles.footerItem}>
-          <Ionicons name="pricetag-outline" size={14} color="#666" />
-          <Text style={styles.footerText}>{item.source}</Text>
+        {/* Informations de contact */}
+        {item.phone && (
+          <View style={styles.infoRow}>
+            <Ionicons name="call-outline" size={14} color="#666" />
+            <Text style={styles.infoText}>{item.phone}</Text>
+          </View>
+        )}
+        {item.email_from && (
+          <View style={styles.infoRow}>
+            <Ionicons name="mail-outline" size={14} color="#666" />
+            <Text style={styles.infoText} numberOfLines={1}>
+              {item.email_from}
+            </Text>
+          </View>
+        )}
+
+        {/* Footer */}
+        <View style={styles.cardFooter}>
+          {item.source_id?.display_name && (
+            <View style={styles.footerItem}>
+              <Ionicons name="pricetag-outline" size={14} color="#666" />
+              <Text style={styles.footerText}>{item.source_id.display_name}</Text>
+            </View>
+          )}
+          {item.date_deadline && (
+            <View style={styles.footerItem}>
+              <Ionicons name="calendar-outline" size={14} color="#666" />
+              <Text style={styles.footerText}>{item.date_deadline}</Text>
+            </View>
+          )}
         </View>
-        <View style={styles.footerItem}>
-          <Ionicons name="calendar-outline" size={14} color="#666" />
-          <Text style={styles.footerText}>{item.prochainContact}</Text>
-        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color="#990000" />
+        <Text style={styles.loadingText}>Chargement des opportunités...</Text>
       </View>
-    </TouchableOpacity>
-  );
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -171,9 +173,9 @@ export default function CRMScreen({ navigation }) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>CRM</Text>
-        <TouchableOpacity>
-          <Ionicons name="funnel-outline" size={24} color="#333" />
+        <Text style={styles.headerTitle}>CRM ({leads.length})</Text>
+        <TouchableOpacity onPress={() => navigation.navigate("AddLead")}>
+          <Ionicons name="add-circle" size={28} color="#990000" />
         </TouchableOpacity>
       </View>
 
@@ -196,18 +198,20 @@ export default function CRMScreen({ navigation }) {
         />
       )}
 
-      {/* Bouton ajouter */}
-      <TouchableOpacity style={styles.addButton}>
-        <Ionicons name="add-circle-outline" size={20} color="#fff" />
-        <Text style={styles.addButtonText}>Nouveau lead</Text>
-      </TouchableOpacity>
-
       {/* Liste des leads */}
       <FlatList
         data={filteredLeads}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.id.toString()}
         renderItem={renderItem}
         contentContainerStyle={styles.list}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons name="briefcase-outline" size={60} color="#ccc" />
+            <Text style={styles.emptyText}>Aucune opportunité trouvée</Text>
+          </View>
+        }
       />
     </View>
   );
@@ -215,6 +219,15 @@ export default function CRMScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, backgroundColor: "#F3F3F3" },
+  loadingContainer: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: "#666",
+  },
 
   // Header
   header: {
@@ -252,27 +265,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
 
-  // Bouton ajouter
-  addButton: {
-    flexDirection: "row",
-    alignSelf: "flex-start",
-    backgroundColor: "#990000",
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#ccc",
-  },
-  addButtonText: {
-    marginLeft: 8,
-    fontSize: 16,
-    color: "#fff",
-    fontWeight: "600",
-  },
-
   // Liste
   list: { paddingBottom: 30 },
+  emptyContainer: {
+    paddingVertical: 60,
+    alignItems: "center",
+  },
+  emptyText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#999",
+  },
   card: {
     backgroundColor: "#fff",
     borderRadius: 10,
@@ -304,21 +307,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
-  },
-  statutNouveau: {
-    backgroundColor: "#D6EAF8",
-  },
-  statutQualifie: {
-    backgroundColor: "#FCF3CF",
-  },
-  statutNegociation: {
-    backgroundColor: "#FADBD8",
-  },
-  statutGagne: {
-    backgroundColor: "#D5F4E6",
-  },
-  statutPerdu: {
-    backgroundColor: "#EAECEE",
   },
   statutText: {
     fontSize: 11,
